@@ -220,6 +220,26 @@ def check_tracking_link(url):
     return True, str(status), url
 
 
+def analyze_tracking_link(url):
+    initial = fetch_url(url, allow_redirects=False)
+    initial_status = initial["status"]
+    location = initial["location"]
+    if initial_status in (301, 302, 303, 307, 308) and location:
+        final_result, final_url = follow_redirects(url)
+        return {
+            "is_redirect": True,
+            "initial_status": initial_status,
+            "final_status": final_result["status"],
+            "final_url": final_url,
+        }
+    return {
+        "is_redirect": False,
+        "initial_status": initial_status,
+        "final_status": initial_status,
+        "final_url": url,
+    }
+
+
 def is_scheme_only_change(original_url, final_url):
     try:
         o = urlparse(original_url)
@@ -236,6 +256,24 @@ def is_scheme_only_change(original_url, final_url):
         )
     except Exception:
         return False
+
+
+def _normalize_host(raw_url):
+    try:
+        host = (urlparse(raw_url).hostname or "").lower().strip(".")
+    except Exception:
+        host = ""
+    if host.startswith("www."):
+        host = host[4:]
+    return host
+
+
+def is_different_domain_redirect(original_url, final_url):
+    src = _normalize_host(original_url)
+    dst = _normalize_host(final_url)
+    if not src or not dst:
+        return False
+    return src != dst
 
 
 def read_domains(path):
@@ -320,23 +358,28 @@ def process_domain(domain, out_header, ignore_https_redirect=False):
     bad_links = []
 
     for link in tracking_links:
-        ok, reason, final_url = check_tracking_link(link["url"])
-        if ok:
+        result = analyze_tracking_link(link["url"])
+        if not result["is_redirect"]:
             tracking_ok += 1
-        else:
-            if ignore_https_redirect and reason.startswith(("301", "302", "303", "307", "308")):
-                if is_scheme_only_change(link["url"], final_url):
-                    tracking_ok += 1
-                    continue
+            continue
+
+        final_url = result["final_url"]
+        if ignore_https_redirect and is_scheme_only_change(link["url"], final_url):
+            tracking_ok += 1
+            continue
+
+        if is_different_domain_redirect(link["url"], final_url):
             tracking_error += 1
             bad_links.append(
                 {
                     "link": link["url"],
-                    "reason": reason,
+                    "reason": f"{result['initial_status']}-> {result['final_status']}",
                     "final_url": final_url,
                     "context": link.get("context", "no_text"),
                 }
             )
+        else:
+            tracking_ok += 1
 
     if tracking_total == 0 and page_status != 0:
         notes.append("no_tracking_links")
@@ -393,54 +436,8 @@ def main():
         if not row or not row[0].strip():
             continue
         domain = row[0].strip()
-        page = fetch_homepage(domain)
-        page_status = page["status"]
-        page_url = page.get("page_url", "")
-        page_final = page.get("final_url", "")
-        notes = []
-
-        if page_status == 0:
-            notes.append(f"page_error:{page['error']}")
-            tracking_links = []
-        else:
-            tracking_links = extract_tracking_links(page["body"], page_final or page_url)
-
-        tracking_total = len(tracking_links)
-        tracking_ok = 0
-        tracking_bad = 0
-        tracking_redirected = 0
-
-        for link in tracking_links:
-            ok, reason, final_url = check_tracking_link(link["url"])
-            if ok:
-                tracking_ok += 1
-            else:
-                tracking_bad += 1
-                if reason.startswith(("301", "302", "303", "307", "308")):
-                    tracking_redirected += 1
-
-        if tracking_total == 0 and page_status != 0:
-            notes.append("no_tracking_links")
-
-        out_row = row[:]
-        if len(out_row) < len(out_header):
-            out_row.extend([""] * (len(out_header) - len(out_row)))
-
-        def set_col(col, value):
-            idx = out_header.index(col)
-            out_row[idx] = value
-
-        set_col("page_url", page_url)
-        set_col("page_status", page_status)
-        set_col("page_final_url", page_final)
-        set_col("tracking_total", tracking_total)
-        set_col("tracking_ok", tracking_ok)
-        set_col("tracking_bad", tracking_bad)
-        set_col("tracking_redirected", tracking_redirected)
-        set_col("notes", ";".join(notes))
+        out_row, _ = process_domain(domain, out_header)
         out_rows.append(out_row)
-
-        time.sleep(0.2)
 
     write_results(input_path, out_header, out_rows)
     return 0
