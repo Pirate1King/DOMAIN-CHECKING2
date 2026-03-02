@@ -356,16 +356,33 @@ def process_domain(domain, out_header, ignore_https_redirect=False):
     tracking_ok = 0
     tracking_error = 0
     bad_links = []
+    ok_links = []
 
     for link in tracking_links:
         result = analyze_tracking_link(link["url"])
         if not result["is_redirect"]:
             tracking_ok += 1
+            ok_links.append(
+                {
+                    "link": link["url"],
+                    "reason": str(result["initial_status"]),
+                    "final_url": result["final_url"],
+                    "context": link.get("context", "no_text"),
+                }
+            )
             continue
 
         final_url = result["final_url"]
         if ignore_https_redirect and is_scheme_only_change(link["url"], final_url):
             tracking_ok += 1
+            ok_links.append(
+                {
+                    "link": link["url"],
+                    "reason": f"{result['initial_status']}-> {result['final_status']} (scheme-only)",
+                    "final_url": final_url,
+                    "context": link.get("context", "no_text"),
+                }
+            )
             continue
 
         if is_different_domain_redirect(link["url"], final_url):
@@ -380,6 +397,14 @@ def process_domain(domain, out_header, ignore_https_redirect=False):
             )
         else:
             tracking_ok += 1
+            ok_links.append(
+                {
+                    "link": link["url"],
+                    "reason": f"{result['initial_status']}-> {result['final_status']} (same-domain)",
+                    "final_url": final_url,
+                    "context": link.get("context", "no_text"),
+                }
+            )
 
     if tracking_total == 0 and page_status != 0:
         notes.append("no_tracking_links")
@@ -400,6 +425,7 @@ def process_domain(domain, out_header, ignore_https_redirect=False):
     set_col("notes", ";".join(notes))
 
     detail = {
+        "tracking_ok": ok_links,
         "tracking_error": bad_links,
         "page_status": page_status,
         "notes": ";".join(notes),

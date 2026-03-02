@@ -320,7 +320,7 @@
         <div id="progressText" class="progress-text">Processed 0/0</div>
         <div id="summaryBox" class="summary-box">No errors yet.</div>
         <div id="results"></div>
-        <div class="footer-note">Tracking_error = redirect 301/302/307/308 sang domain khac (403 khong tinh loi)</div>
+        <div class="footer-note">Tracking_error = redirect 301/302/307/308 sang domain khac</div>
       </div>
     </div>
     <div id="tooltip" class="tooltip" role="dialog" aria-hidden="true">
@@ -363,7 +363,11 @@
           html += "<tr>";
           row.forEach((cell, idx) => {
             let value = cell === null || cell === undefined ? "" : String(cell);
-            if (header[idx] === "tracking_error") {
+            if (header[idx] === "tracking_ok") {
+              const num = Number(value);
+              const klass = num === 0 ? "status bad" : "status ok";
+              html += `<td class="${klass}" data-detail="tracking_ok" data-row="${rowIdx}">${value}</td>`;
+            } else if (header[idx] === "tracking_error") {
               const num = Number(value);
               const klass = num === 0 ? "status ok" : "status bad";
               html += `<td class="${klass}" data-detail="tracking_error" data-row="${rowIdx}">${value}</td>`;
@@ -556,7 +560,7 @@
         const detailType = cell.dataset.detail;
         const detail = (lastData.details || [])[rowIdx] || {};
         const list = detail[detailType] || [];
-        const title = "Error Tracking Links";
+        const title = detailType === "tracking_ok" ? "OK Tracking Links" : "Error Tracking Links";
         showTooltip(cell, title, list);
       });
 
@@ -567,7 +571,7 @@
         const detailType = cell.dataset.detail;
         const detail = (lastData.details || [])[rowIdx] || {};
         const list = detail[detailType] || [];
-        const title = "Error Tracking Links";
+        const title = detailType === "tracking_ok" ? "OK Tracking Links" : "Error Tracking Links";
         showTooltip(cell, title, list);
       });
 
