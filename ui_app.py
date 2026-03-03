@@ -5,6 +5,8 @@ import threading
 import uuid
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
+from urllib.error import URLError
+from urllib.request import Request, urlopen
 
 from check_domains import build_output_header, process_domain
 
@@ -37,6 +39,9 @@ class Handler(BaseHTTPRequestHandler):
         self._send(200, html, "text/html; charset=utf-8")
 
     def do_POST(self):
+        if self.path == "/notify":
+            self._handle_notify()
+            return
         if self.path != "/run":
             self._send(404, "Not Found", "text/plain; charset=utf-8")
             return
@@ -56,6 +61,38 @@ class Handler(BaseHTTPRequestHandler):
         job_id = start_job(domains, ignore_https_redirect=ignore_https_redirect)
         body = json.dumps({"job_id": job_id})
         self._send(200, body, "application/json; charset=utf-8")
+
+    def _handle_notify(self):
+        length = int(self.headers.get("Content-Length", "0"))
+        raw = self.rfile.read(length).decode("utf-8", errors="ignore")
+        try:
+            payload = json.loads(raw)
+        except json.JSONDecodeError:
+            self._send(400, "Invalid JSON", "text/plain; charset=utf-8")
+            return
+
+        webhook_url = str(payload.get("webhook_url", "")).strip()
+        message = str(payload.get("message", "")).strip()
+        if not webhook_url or not message:
+            self._send(400, "Missing webhook_url or message", "text/plain; charset=utf-8")
+            return
+        if not webhook_url.startswith("https://chat.googleapis.com/"):
+            self._send(400, "Invalid Google Chat webhook URL", "text/plain; charset=utf-8")
+            return
+
+        try:
+            req = Request(
+                webhook_url,
+                data=json.dumps({"text": message}).encode("utf-8"),
+                headers={"Content-Type": "application/json; charset=UTF-8"},
+                method="POST",
+            )
+            with urlopen(req, timeout=20) as resp:
+                code = getattr(resp, "status", 200)
+            body = json.dumps({"ok": True, "status": code})
+            self._send(200, body, "application/json; charset=utf-8")
+        except URLError as exc:
+            self._send(502, f"Notify failed: {exc}", "text/plain; charset=utf-8")
 
     def do_OPTIONS(self):
         self._send(204, "", "text/plain; charset=utf-8")

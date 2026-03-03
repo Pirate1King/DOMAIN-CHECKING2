@@ -172,6 +172,17 @@
         color: var(--ink);
         cursor: pointer;
       }
+      .webhook-input {
+        min-width: 320px;
+        max-width: 520px;
+        width: 100%;
+        padding: 8px 10px;
+        border-radius: 8px;
+        border: 1px solid var(--border);
+        background: #07160f;
+        color: var(--ink);
+        font-size: 12px;
+      }
       .copy-btn svg {
         width: 16px;
         height: 16px;
@@ -312,7 +323,13 @@
             </svg>
             Copy Table (Sheets)
           </button>
+          <button id="sendChatBtn" class="copy-btn" type="button">
+            Send To Google Chat
+          </button>
           <div class="scroll-hint"></div>
+        </div>
+        <div class="actions">
+          <input id="webhookUrl" class="webhook-input" type="password" placeholder="Google Chat webhook URL">
         </div>
         <div class="progress" aria-hidden="true">
           <div id="progressBar" class="progress-bar"></div>
@@ -335,6 +352,8 @@
       const textarea = document.getElementById("domains");
       const copyBtn = document.getElementById("copyBtn");
       const copyTableBtn = document.getElementById("copyTableBtn");
+      const sendChatBtn = document.getElementById("sendChatBtn");
+      const webhookUrl = document.getElementById("webhookUrl");
       const ignoreHttps = document.getElementById("ignoreHttps");
       const tooltip = document.getElementById("tooltip");
       const tooltipTitle = document.getElementById("tooltipTitle");
@@ -479,6 +498,40 @@
           setStatus("Copied table for Sheets.");
         } catch (err) {
           setStatus("Copy failed: " + err);
+        }
+      });
+
+      sendChatBtn.addEventListener("click", async () => {
+        if (!lastData) {
+          setStatus("No results to send.");
+          return;
+        }
+        const webhook = (webhookUrl.value || "").trim();
+        if (!webhook) {
+          setStatus("Enter Google Chat webhook URL.");
+          return;
+        }
+        const message = buildErrorSummary(lastData.header, lastData.rows, lastData.details || []);
+        if (!message || message === "No errors found." || message === "No results.") {
+          setStatus("No error summary to send.");
+          return;
+        }
+        try {
+          const resp = await fetch(`${API_BASE}/notify`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              webhook_url: webhook,
+              message,
+            }),
+          });
+          if (!resp.ok) {
+            const errText = await resp.text();
+            throw new Error(errText || `Notify error ${resp.status}`);
+          }
+          setStatus("Sent to Google Chat.");
+        } catch (err) {
+          setStatus("Send failed: " + err);
         }
       });
 
