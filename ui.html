@@ -415,7 +415,7 @@
       function hostFromUrl(rawUrl) {
         try {
           const u = new URL(String(rawUrl || ""));
-          return (u.hostname || "").replace(/^www\./i, "").toUpperCase();
+          return (u.hostname || "").replace(/^www\./i, "").toLowerCase();
         } catch {
           return "";
         }
@@ -833,6 +833,5 @@
     </script>
   </body>
 </html>
-
 
 

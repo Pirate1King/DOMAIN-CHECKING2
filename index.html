@@ -400,7 +400,7 @@
       function hostFromUrl(rawUrl) {
         try {
           const u = new URL(String(rawUrl || ""));
-          return (u.hostname || "").replace(/^www\./i, "").toUpperCase();
+          return (u.hostname || "").replace(/^www\./i, "").toLowerCase();
         } catch {
           return "";
         }
@@ -449,9 +449,9 @@
             const pairText = pairs.length ? ` (${pairs.join(", ")})` : "";
             const hasWrapped = badLinks.some((item) => String(item.context || "").includes("wrapped_from="));
             if (hasWrapped) {
-              lines.push(`${domain}: bọc link last${pairText}`);
+              lines.push(`${domain}: link lastest được bọc${pairText}`);
             } else {
-              lines.push(`${domain}: link last${pairText}`);
+              lines.push(`${domain}: link lastest${pairText}`);
             }
           }
         });
@@ -813,6 +813,5 @@
     </script>
   </body>
 </html>
-
 
 
