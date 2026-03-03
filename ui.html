@@ -481,6 +481,7 @@
         const idxNotes = header.indexOf("notes");
         const groups = {
           access: [],
+          missingHttps: [],
           latest: [],
           wrapped: [],
         };
@@ -502,9 +503,18 @@
           }
 
           if (trackingError > 0) {
-            const pairs = collectRedirectPairs(badLinks);
+            const missingHttpsLinks = badLinks.filter((item) => String(item.error_type || "").toLowerCase() === "missing_https" || String(item.reason || "").toLowerCase().includes("thieu-https"));
+            if (missingHttpsLinks.length) {
+              groups.missingHttps.push(`${domain}: Thiếu https (http -> https)`);
+            }
+
+            const nonHttpsBadLinks = badLinks.filter((item) => !(String(item.error_type || "").toLowerCase() === "missing_https" || String(item.reason || "").toLowerCase().includes("thieu-https")));
+            if (!nonHttpsBadLinks.length) {
+              return;
+            }
+            const pairs = collectRedirectPairs(nonHttpsBadLinks);
             const pairText = pairs.length ? ` (${pairs.join(", ")})` : "";
-            const hasWrapped = badLinks.some((item) => String(item.context || "").includes("wrapped_from="));
+            const hasWrapped = nonHttpsBadLinks.some((item) => String(item.context || "").includes("wrapped_from="));
             if (hasWrapped) {
               groups.wrapped.push(`${domain}: Link lastest (bọc link)${pairText}`);
             } else {
@@ -525,6 +535,10 @@
         if (groups.latest.length) {
           lines.push("[Chưa đổi domain link]");
           groups.latest.forEach((item) => lines.push(`- ${item}`));
+        }
+        if (groups.missingHttps.length) {
+          lines.push("[Thiếu https]");
+          groups.missingHttps.forEach((item) => lines.push(`- ${item}`));
         }
         if (groups.wrapped.length) {
           lines.push("[Chưa đổi domain link (bọc link)]");
@@ -584,6 +598,12 @@
           groupSections.push({
             header: "Chưa đổi domain link",
             widgets: [{ textParagraph: { text: groups.latest.map((line) => `- ${escapeForChatHtml(line)}`).join("<br>") } }],
+          });
+        }
+        if (groups.missingHttps.length) {
+          groupSections.push({
+            header: "Thiếu https",
+            widgets: [{ textParagraph: { text: groups.missingHttps.map((line) => `- ${escapeForChatHtml(line)}`).join("<br>") } }],
           });
         }
         if (groups.wrapped.length) {

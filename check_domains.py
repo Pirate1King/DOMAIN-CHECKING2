@@ -632,14 +632,28 @@ def process_domain(domain, out_header, ignore_https_redirect=False):
             continue
 
         final_url = result["final_url"]
-        if ignore_https_redirect and is_scheme_only_change(link["url"], final_url):
-            tracking_ok += 1
-            ok_links.append(
+        scheme_only = is_scheme_only_change(link["url"], final_url)
+        if scheme_only:
+            if ignore_https_redirect:
+                tracking_ok += 1
+                ok_links.append(
+                    {
+                        "link": link["url"],
+                        "reason": f"{result['initial_status']}-> {result['final_status']} (scheme-only)",
+                        "final_url": final_url,
+                        "context": link.get("context", "no_text"),
+                        "error_type": "",
+                    }
+                )
+                continue
+            tracking_error += 1
+            bad_links.append(
                 {
                     "link": link["url"],
-                    "reason": f"{result['initial_status']}-> {result['final_status']} (scheme-only)",
+                    "reason": f"{result['initial_status']}-> {result['final_status']} (thieu-https)",
                     "final_url": final_url,
                     "context": link.get("context", "no_text"),
+                    "error_type": "missing_https",
                 }
             )
             continue
@@ -652,6 +666,7 @@ def process_domain(domain, out_header, ignore_https_redirect=False):
                     "reason": f"{result['initial_status']}-> {result['final_status']}",
                     "final_url": final_url,
                     "context": link.get("context", "no_text"),
+                    "error_type": "domain_redirect",
                 }
             )
         else:
@@ -662,6 +677,7 @@ def process_domain(domain, out_header, ignore_https_redirect=False):
                     "reason": f"{result['initial_status']}-> {result['final_status']} (same-domain)",
                     "final_url": final_url,
                     "context": link.get("context", "no_text"),
+                    "error_type": "",
                 }
             )
 
