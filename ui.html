@@ -454,7 +454,7 @@
 
           if (pageStatus !== 200) {
             if (pageStatus === 0) {
-              lines.push(`${domain}: kh\u00f4ng truy c\u1eadp \u0111\u01b0\u1ee3c (${notes || "dns/network"})`);
+              lines.push(`${domain}: không truy cập được (${notes || "dns/network"})`);
             } else {
               lines.push(`${domain}: page status ${pageStatus}`);
             }
@@ -465,7 +465,7 @@
             const pairText = pairs.length ? ` (${pairs.join(", ")})` : "";
             const hasWrapped = badLinks.some((item) => String(item.context || "").includes("wrapped_from="));
             if (hasWrapped) {
-              lines.push(`${domain}: b\u1ecdc link last${pairText}`);
+              lines.push(`${domain}: bọc link last${pairText}`);
             } else {
               lines.push(`${domain}: link last${pairText}`);
             }
@@ -497,7 +497,7 @@
         const lines = [`QC Report (${formatToday()})`];
         const issueLines = buildQcLines(header, rows, details || []);
         if (!issueLines.length) {
-          lines.push("kh\u00f4ng c\u00f3 l\u1ed7i.");
+          lines.push("không có lỗi.");
           return lines.join("\n");
         }
         lines.push(...issueLines);
@@ -515,7 +515,7 @@
         const maxIssueLines = 30;
         const issueText = issueLines.length
           ? issueLines.slice(0, maxIssueLines).map((line) => `- ${escapeForChatHtml(line)}`).join("<br>")
-          : "kh\u00f4ng c\u00f3 l\u1ed7i.";
+          : "không có lỗi.";
 
         return {
           cardsV2: [
