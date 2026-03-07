@@ -894,16 +894,19 @@
             const wrappedFrom = escapeHtml(String(item.wrapped_from || ""));
             const pathLine = wrappedFrom
               ? `<div class="path-grid">
-                  <div class="path-row"><div class="path-label">UI</div><div class="path-value">${sourceUrl}</div></div>
-                  <div class="path-row"><div class="path-label">Trung gian</div><div class="path-value">${wrappedFrom}</div></div>
-                  <div class="path-row"><div class="path-label">Tracking</div><div class="path-value">${link}</div></div>
-                  <div class="path-row"><div class="path-label">Link cuoi</div><div class="path-value">${finalUrl}</div></div>
+                  <div class="path-row"><div class="path-label">1. Link tracking</div><div class="path-value">${link}</div></div>
+                  <div class="path-row"><div class="path-label">2. Link cuoi</div><div class="path-value">${finalUrl}</div></div>
+                  <div class="path-row"><div class="path-label">Link tren UI</div><div class="path-value">${sourceUrl}</div></div>
+                  <div class="path-row"><div class="path-label">Link trung gian</div><div class="path-value">${wrappedFrom}</div></div>
                 </div>`
-              : `<div class="tooltip-link">${link}</div>`;
+              : `<div class="path-grid">
+                  <div class="path-row"><div class="path-label">1. Link tracking</div><div class="path-value">${link}</div></div>
+                  <div class="path-row"><div class="path-label">2. Link cuoi</div><div class="path-value">${finalUrl}</div></div>
+                </div>`;
             return `
               <div class="tooltip-item">
                 <div class="tooltip-label">#${idx + 1}</div>
-                <div class="tooltip-meta">${reason} -> ${finalUrl}</div>
+                <div class="tooltip-meta">Status: ${reason}</div>
                 ${pathLine}
                 <div class="tooltip-context">context: ${context}</div>
               </div>
