@@ -158,6 +158,34 @@
       .status.ok {
         color: #34ff97;
       }
+      .domain-cell {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .status-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        display: inline-block;
+        flex: 0 0 8px;
+      }
+      .status-dot.ok {
+        background: #34ff97;
+        box-shadow: 0 0 0 1px rgba(52, 255, 151, 0.35);
+      }
+      .status-dot.warn {
+        background: #ffb454;
+        box-shadow: 0 0 0 1px rgba(255, 180, 84, 0.35);
+      }
+      .status-dot.info {
+        background: #ffd76a;
+        box-shadow: 0 0 0 1px rgba(255, 215, 106, 0.35);
+      }
+      .status-dot.bad {
+        background: #ff5f5f;
+        box-shadow: 0 0 0 1px rgba(255, 95, 95, 0.35);
+      }
       .footer-note {
         margin-top: 8px;
         color: var(--muted);
@@ -586,8 +614,27 @@
           html += `<th>${col}</th>`;
         }
         html += "</tr></thead><tbody>";
+        const idxPageStatus = header.indexOf("page_status");
+        const idxTrackingError = header.indexOf("tracking_error");
+        const idxNotes = header.indexOf("notes");
         rows.forEach((row, rowIdx) => {
           const sourceRowIdx = Array.isArray(sourceIndexes) ? sourceIndexes[rowIdx] : rowIdx;
+          const pageStatusVal = idxPageStatus >= 0 ? Number(row[idxPageStatus] || 0) : 0;
+          const trackingErrorVal = idxTrackingError >= 0 ? Number(row[idxTrackingError] || 0) : 0;
+          const notesVal = idxNotes >= 0 ? String(row[idxNotes] || "").toLowerCase() : "";
+          const hasNoTracking = notesVal.includes("no_tracking_links");
+          let dotClass = "ok";
+          let dotTitle = "OK";
+          if (trackingErrorVal > 0) {
+            dotClass = "bad";
+            dotTitle = "Tracking error";
+          } else if (pageStatusVal === 0 || pageStatusVal >= 400) {
+            dotClass = "warn";
+            dotTitle = "Page status error";
+          } else if (hasNoTracking) {
+            dotClass = "info";
+            dotTitle = "No tracking link";
+          }
           html += "<tr>";
           row.forEach((cell, idx) => {
             let value = cell === null || cell === undefined ? "" : String(cell);
@@ -610,6 +657,9 @@
               } else {
                 html += "<td></td>";
               }
+            } else if (header[idx] === "domain") {
+              const safeDomain = escapeHtml(value);
+              html += `<td><span class="domain-cell"><span class="status-dot ${dotClass}" title="${dotTitle}" aria-label="${dotTitle}"></span><span>${safeDomain}</span></span></td>`;
             } else {
               html += `<td>${value}</td>`;
             }
