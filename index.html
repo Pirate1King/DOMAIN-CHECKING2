@@ -77,6 +77,16 @@
         margin-top: 12px;
         flex-wrap: wrap;
       }
+      .toggle {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .toggle input {
+        accent-color: var(--accent);
+      }
       button {
         background: var(--accent);
         color: #02160c;
@@ -159,6 +169,15 @@
         align-items: center;
         margin-top: 10px;
       }
+      .filter-select {
+        background: #07160f;
+        color: var(--ink);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 8px 10px;
+        font-family: "Share Tech Mono", "Consolas", monospace;
+        font-size: 12px;
+      }
       .copy-btn {
         display: inline-flex;
         align-items: center;
@@ -190,6 +209,19 @@
         color: var(--muted);
         font-size: 12px;
       }
+      .summary-box {
+        margin-top: 10px;
+        padding: 10px 12px;
+        border: 1px dashed var(--border);
+        border-radius: 10px;
+        background: #04120c;
+        color: var(--muted);
+        font-size: 12px;
+        white-space: pre-wrap;
+      }
+      .summary-error {
+        color: #ff5f5f;
+      }
       .progress {
         margin-top: 10px;
         background: #04110a;
@@ -208,19 +240,6 @@
         margin-top: 6px;
         color: var(--muted);
         font-size: 12px;
-      }
-      .summary-box {
-        margin-top: 10px;
-        padding: 10px 12px;
-        border: 1px dashed var(--border);
-        border-radius: 10px;
-        background: #04120c;
-        color: var(--muted);
-        font-size: 12px;
-        white-space: pre-wrap;
-      }
-      .summary-error {
-        color: #ff5f5f;
       }
       .tooltip {
         position: fixed;
@@ -310,6 +329,35 @@
       .tooltip-open-link:hover {
         color: #baffea;
       }
+      .tooltip-actions {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        margin-top: 6px;
+        margin-bottom: 2px;
+      }
+      .tooltip-pill {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 999px;
+        font-size: 11px;
+        margin-top: 6px;
+      }
+      .tooltip-pill.wrapped {
+        color: #ffd760;
+        background: rgba(255, 215, 96, 0.12);
+        border: 1px solid rgba(255, 215, 96, 0.35);
+      }
+      .tooltip-pill.subpage {
+        color: #7fffd4;
+        background: rgba(127, 255, 212, 0.12);
+        border: 1px solid rgba(127, 255, 212, 0.35);
+      }
+      .tooltip-pill.direct {
+        color: #9ee0b5;
+        background: rgba(158, 224, 181, 0.12);
+        border: 1px solid rgba(158, 224, 181, 0.35);
+      }
       .tooltip-path {
         color: var(--ink);
         font-size: 11px;
@@ -376,6 +424,10 @@
         <textarea id="domains"></textarea>
         <div class="row">
           <button id="runBtn">Run Check</button>
+          <label class="toggle">
+            <input id="ignoreHttps" type="checkbox" checked>
+            Ignore HTTP -> HTTPS redirect
+          </label>
           <div id="status" class="hint"></div>
         </div>
       </div>
@@ -401,6 +453,13 @@
         </div>
         <div class="actions">
           <input id="webhookUrl" class="webhook-input" type="password" placeholder="Google Chat webhook URL">
+          <select id="errorFilter" class="filter-select" title="Filter rows">
+            <option value="all">Filter: Tat ca</option>
+            <option value="tracking_error">Filter: Co tracking_error</option>
+            <option value="wrapped">Filter: Boc link</option>
+            <option value="subpage">Filter: Trang con</option>
+            <option value="access_error">Filter: Loi truy cap domain</option>
+          </select>
         </div>
         <div class="progress" aria-hidden="true">
           <div id="progressBar" class="progress-bar"></div>
@@ -431,6 +490,7 @@
       const copyTableBtn = document.getElementById("copyTableBtn");
       const sendChatBtn = document.getElementById("sendChatBtn");
       const webhookUrl = document.getElementById("webhookUrl");
+      const ignoreHttps = document.getElementById("ignoreHttps");
       const tooltip = document.getElementById("tooltip");
       const tooltipTitle = document.getElementById("tooltipTitle");
       const tooltipSubtitle = document.getElementById("tooltipSubtitle");
@@ -439,6 +499,7 @@
       const progressBar = document.getElementById("progressBar");
       const progressText = document.getElementById("progressText");
       const summaryBox = document.getElementById("summaryBox");
+      const errorFilter = document.getElementById("errorFilter");
       let lastData = null;
       let pollTimer = null;
       let activeDetailCell = null;
@@ -448,7 +509,36 @@
         statusEl.textContent = text;
       }
 
-      function renderTable(header, rows) {
+      function getFilteredRowsAndIndexes(header, rows, details) {
+        const filter = (errorFilter && errorFilter.value) || "all";
+        const sourceRows = rows || [];
+        if (!sourceRows.length || filter === "all") {
+          return { rows: sourceRows, indexes: sourceRows.map((_, idx) => idx) };
+        }
+        const idxPageStatus = header.indexOf("page_status");
+        const idxTrackingError = header.indexOf("tracking_error");
+        const viewRows = [];
+        const indexes = [];
+        sourceRows.forEach((row, idx) => {
+          const pageStatus = Number(row[idxPageStatus] || 0);
+          const trackingError = Number(row[idxTrackingError] || 0);
+          const badLinks = ((details || [])[idx] || {}).tracking_error || [];
+          const hasWrapped = badLinks.some((item) => String(item.wrapped_from || "").trim());
+          const hasSubpage = badLinks.some((item) => String(item.subpage_from || "").trim() && !String(item.wrapped_from || "").trim());
+          let keep = false;
+          if (filter === "tracking_error") keep = trackingError > 0;
+          if (filter === "wrapped") keep = hasWrapped;
+          if (filter === "subpage") keep = hasSubpage;
+          if (filter === "access_error") keep = pageStatus !== 200;
+          if (keep) {
+            viewRows.push(row);
+            indexes.push(idx);
+          }
+        });
+        return { rows: viewRows, indexes };
+      }
+
+      function renderTable(header, rows, sourceIndexes) {
         const prevWrap = resultsEl.querySelector(".table-wrap");
         const prevScrollTop = prevWrap ? prevWrap.scrollTop : 0;
         const prevScrollLeft = prevWrap ? prevWrap.scrollLeft : 0;
@@ -463,17 +553,18 @@
         }
         html += "</tr></thead><tbody>";
         rows.forEach((row, rowIdx) => {
+          const sourceRowIdx = Array.isArray(sourceIndexes) ? sourceIndexes[rowIdx] : rowIdx;
           html += "<tr>";
           row.forEach((cell, idx) => {
             let value = cell === null || cell === undefined ? "" : String(cell);
             if (header[idx] === "tracking_ok") {
               const num = Number(value);
               const klass = num === 0 ? "status bad" : "status ok";
-              html += `<td class="${klass}" data-detail="tracking_ok" data-row="${rowIdx}">${value}</td>`;
+              html += `<td class="${klass}" data-detail="tracking_ok" data-row="${sourceRowIdx}">${value}</td>`;
             } else if (header[idx] === "tracking_error") {
               const num = Number(value);
               const klass = num === 0 ? "status ok" : "status bad";
-              html += `<td class="${klass}" data-detail="tracking_error" data-row="${rowIdx}">${value}</td>`;
+              html += `<td class="${klass}" data-detail="tracking_error" data-row="${sourceRowIdx}">${value}</td>`;
             } else if (header[idx] === "page_status") {
               const num = Number(value);
               const klass = num >= 200 && num < 400 ? "status ok" : "status bad";
@@ -531,6 +622,7 @@
         });
         return pairs;
       }
+
       function buildQcLines(header, rows, details) {
         if (!rows.length) return [];
         const idxDomain = header.indexOf("domain");
@@ -607,7 +699,6 @@
             if (!nonHttpsBadLinks.length) {
               return;
             }
-
             const pairs = collectRedirectPairs(nonHttpsBadLinks);
             const pairText = pairs.length ? ` (${pairs.join(", ")})` : "";
             const hasWrapped = nonHttpsBadLinks.some((item) => String(item.wrapped_from || "").trim());
@@ -642,6 +733,7 @@
         }
         return lines;
       }
+
       function computeReportStats(header, rows) {
         const idxPageStatus = header.indexOf("page_status");
         const idxTrackingError = header.indexOf("tracking_error");
@@ -755,7 +847,10 @@
           const resp = await fetch(`${API_BASE}/run`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ domains }),
+            body: JSON.stringify({
+              domains,
+              ignore_https_redirect: ignoreHttps.checked,
+            }),
           });
           if (!resp.ok) {
             throw new Error(`Server error ${resp.status}`);
@@ -923,11 +1018,23 @@
             const wrappedFrom = escapeHtml(String(item.wrapped_from || ""));
             const subpageFromRaw = String(item.subpage_from || "");
             const subpageFrom = escapeHtml(subpageFromRaw);
+            const wrappedRaw = String(item.wrapped_from || "").trim();
             const locateBaseUrl = subpageFromRaw || pageUrlForLocate;
             const locateUrl = buildLocateUrl(locateBaseUrl, String(item.context || ""));
             const locateButton = locateUrl
-              ? `<a class="tooltip-open-link" href="${escapeHtml(locateUrl)}" target="_blank" rel="noopener noreferrer">Go to vi tri</a>`
+              ? `<a class="tooltip-open-link" href="${escapeHtml(locateUrl)}" target="_blank" rel="noopener noreferrer">Locate on page</a>`
               : "";
+            const trackingOpenButton = link
+              ? `<a class="tooltip-open-link" href="${link}" target="_blank" rel="noopener noreferrer">Open tracking</a>`
+              : "";
+            const subpageOpenButton = subpageFrom
+              ? `<a class="tooltip-open-link" href="${subpageFrom}" target="_blank" rel="noopener noreferrer">Open subpage</a>`
+              : "";
+            const sourcePill = wrappedRaw
+              ? `<div class="tooltip-pill wrapped">Nguon: boc redirect</div>`
+              : (subpageFromRaw
+                ? `<div class="tooltip-pill subpage">Nguon: trang con</div>`
+                : `<div class="tooltip-pill direct">Nguon: direct</div>`);
             const pathLine = wrappedFrom
               ? `<div class="path-grid">
                   <div class="path-row"><div class="path-label">1. Link tracking</div><div class="path-value">${link}</div></div>
@@ -944,7 +1051,8 @@
               <div class="tooltip-item">
                 <div class="tooltip-label">#${idx + 1}</div>
                 <div class="tooltip-meta">Status: ${reason}</div>
-                ${locateButton}
+                ${sourcePill}
+                <div class="tooltip-actions">${trackingOpenButton}${subpageOpenButton}${locateButton}</div>
                 ${pathLine}
                 <div class="tooltip-context">context: ${context}</div>
               </div>
@@ -1021,7 +1129,8 @@
             }
             const data = await resp.json();
             lastData = data;
-            renderTable(data.header, data.rows);
+            const view = getFilteredRowsAndIndexes(data.header, data.rows, data.details || []);
+            renderTable(data.header, view.rows, view.indexes);
             summaryBox.innerHTML = renderSummaryBox(data.header, data.rows, data.details || []);
             if (data.error) {
               setStatus(`Error: ${data.error}`);
@@ -1081,6 +1190,13 @@
         }).join("");
         return `${statLine}${issues}`;
       }
+
+      errorFilter.addEventListener("change", () => {
+        if (!lastData) return;
+        hideTooltip();
+        const view = getFilteredRowsAndIndexes(lastData.header, lastData.rows, lastData.details || []);
+        renderTable(lastData.header, view.rows, view.indexes);
+      });
     </script>
   </body>
 </html>
