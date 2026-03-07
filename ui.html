@@ -449,10 +449,6 @@
           <button id="sendChatBtn" class="copy-btn" type="button">
             Send To Google Chat
           </button>
-          <div class="scroll-hint"></div>
-        </div>
-        <div class="actions">
-          <input id="webhookUrl" class="webhook-input" type="password" placeholder="Google Chat webhook URL">
           <select id="errorFilter" class="filter-select" title="Filter rows">
             <option value="all">Filter: Tất cả</option>
             <option value="tracking_error">Filter: Có tracking_error</option>
@@ -460,6 +456,10 @@
             <option value="subpage">Filter: Trang con</option>
             <option value="access_error">Filter: Lỗi truy cập domain</option>
           </select>
+          <div class="scroll-hint"></div>
+        </div>
+        <div class="actions">
+          <input id="webhookUrl" class="webhook-input" type="password" placeholder="Google Chat webhook URL">
         </div>
         <div class="progress" aria-hidden="true">
           <div id="progressBar" class="progress-bar"></div>
