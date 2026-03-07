@@ -216,7 +216,9 @@
       }
       .tooltip {
         position: fixed;
-        max-width: 620px;
+        top: 90px;
+        right: 20px;
+        width: min(460px, calc(100vw - 32px));
         padding: 10px 12px;
         background: #02110a;
         border: 1px solid var(--border);
@@ -238,6 +240,10 @@
         color: var(--accent);
         text-transform: uppercase;
       }
+      .tooltip-subtitle {
+        color: var(--muted);
+        font-size: 11px;
+      }
       .tooltip-close {
         border: 1px solid var(--border);
         background: #04150e;
@@ -250,6 +256,9 @@
       .active-detail-cell {
         outline: 2px solid var(--accent);
         outline-offset: -2px;
+      }
+      .active-detail-row td {
+        background: rgba(24, 255, 134, 0.06);
       }
       .tooltip-list {
         max-height: 240px;
@@ -301,6 +310,11 @@
         h1 { font-size: 22px; }
         table { font-size: 12px; }
         .table-wrap { max-height: 320px; }
+        .tooltip {
+          top: 72px;
+          right: 8px;
+          width: calc(100vw - 16px);
+        }
       }
     </style>
   </head>
@@ -352,7 +366,10 @@
     </div>
     <div id="tooltip" class="tooltip" role="dialog" aria-hidden="true">
       <div class="tooltip-head">
-        <div id="tooltipTitle" class="tooltip-title"></div>
+        <div>
+          <div id="tooltipTitle" class="tooltip-title"></div>
+          <div id="tooltipSubtitle" class="tooltip-subtitle"></div>
+        </div>
         <button id="tooltipClose" class="tooltip-close" type="button">Close</button>
       </div>
       <div id="tooltipBody" class="tooltip-list"></div>
@@ -369,6 +386,7 @@
       const webhookUrl = document.getElementById("webhookUrl");
       const tooltip = document.getElementById("tooltip");
       const tooltipTitle = document.getElementById("tooltipTitle");
+      const tooltipSubtitle = document.getElementById("tooltipSubtitle");
       const tooltipBody = document.getElementById("tooltipBody");
       const tooltipClose = document.getElementById("tooltipClose");
       const progressBar = document.getElementById("progressBar");
@@ -377,6 +395,7 @@
       let lastData = null;
       let pollTimer = null;
       let activeDetailCell = null;
+      let activeDetailRow = null;
 
       function setStatus(text) {
         statusEl.textContent = text;
@@ -412,6 +431,13 @@
               const num = Number(value);
               const klass = num >= 200 && num < 400 ? "status ok" : "status bad";
               html += `<td class="${klass}">${value}</td>`;
+            } else if (header[idx] === "page_url" || header[idx] === "page_final_url") {
+              const safeUrl = escapeHtml(value);
+              if (value) {
+                html += `<td><a href="${safeUrl}" target="_blank" rel="noopener noreferrer">${safeUrl}</a></td>`;
+              } else {
+                html += "<td></td>";
+              }
             } else {
               html += `<td>${value}</td>`;
             }
@@ -805,13 +831,21 @@
         return `${prefix}<span class="diff-highlight">${mid}</span>${suffix}`;
       }
 
-      function showTooltip(target, title, list) {
+      function showTooltip(target, title, subtitle, list) {
         if (activeDetailCell) {
           activeDetailCell.classList.remove("active-detail-cell");
         }
+        if (activeDetailRow) {
+          activeDetailRow.classList.remove("active-detail-row");
+        }
         activeDetailCell = target;
         activeDetailCell.classList.add("active-detail-cell");
+        activeDetailRow = target.closest("tr");
+        if (activeDetailRow) {
+          activeDetailRow.classList.add("active-detail-row");
+        }
         tooltipTitle.textContent = title;
+        tooltipSubtitle.textContent = subtitle || "";
         if (!list.length) {
           tooltipBody.textContent = "No link details returned. Restart the UI server and run again.";
         } else {
@@ -836,11 +870,6 @@
             `;
           }).join("");
         }
-        const rect = target.getBoundingClientRect();
-        const top = Math.min(rect.bottom + 8, window.innerHeight - 260);
-        const left = Math.min(rect.left, window.innerWidth - 560);
-        tooltip.style.top = `${top}px`;
-        tooltip.style.left = `${left}px`;
         tooltip.style.display = "block";
         tooltip.setAttribute("aria-hidden", "false");
       }
@@ -851,6 +880,10 @@
         if (activeDetailCell) {
           activeDetailCell.classList.remove("active-detail-cell");
           activeDetailCell = null;
+        }
+        if (activeDetailRow) {
+          activeDetailRow.classList.remove("active-detail-row");
+          activeDetailRow = null;
         }
       }
 
@@ -871,9 +904,23 @@
         const detail = (lastData.details || [])[rowIdx] || {};
         const list = detail[detailType] || [];
         const title = detailType === "tracking_ok" ? "OK Tracking Links" : "Error Tracking Links";
-        showTooltip(cell, title, list);
+        const header = lastData.header || [];
+        const rows = lastData.rows || [];
+        const domainIdx = header.indexOf("domain");
+        const domain = domainIdx >= 0 && rows[rowIdx] ? rows[rowIdx][domainIdx] : "";
+        const subtitle = `Row ${rowIdx + 1}${domain ? ` • ${domain}` : ""}`;
+        showTooltip(cell, title, subtitle, list);
       });
       tooltipClose.addEventListener("click", hideTooltip);
+
+      document.addEventListener("click", (event) => {
+        if (tooltip.style.display !== "block") return;
+        const clickInsideTooltip = tooltip.contains(event.target);
+        const clickDetailCell = event.target.closest("td[data-detail]");
+        if (!clickInsideTooltip && !clickDetailCell) {
+          hideTooltip();
+        }
+      });
 
       function startPolling(jobId) {
         if (pollTimer) {
