@@ -6,7 +6,7 @@ import sys
 import time
 from html.parser import HTMLParser
 from urllib.error import HTTPError, URLError
-from urllib.parse import parse_qsl, unquote, urljoin, urlparse
+from urllib.parse import parse_qsl, quote, unquote, urljoin, urlparse, urlsplit, urlunsplit
 from urllib.request import Request, build_opener, HTTPRedirectHandler
 
 
@@ -37,6 +37,7 @@ WRAPPED_URL_KEYS = {
     "ref",
 }
 URL_REGEX = re.compile(r"https?://[^\s'\"<>]+", re.IGNORECASE)
+CONTROL_CHAR_RE = re.compile(r"[\x00-\x1f\x7f]")
 STATIC_EXTENSIONS = (
     ".css",
     ".js",
@@ -583,6 +584,7 @@ def extract_tracking_from_raw(raw_value, base_url):
 
 def normalize_candidate_url(raw, base_url):
     value = html.unescape(str(raw).strip())
+    value = CONTROL_CHAR_RE.sub("", value)
     if not value:
         return ""
     if value.startswith(("javascript:", "mailto:", "tel:", "#")):
@@ -593,10 +595,28 @@ def normalize_candidate_url(raw, base_url):
         return f"{scheme}:{value}"
     parsed = urlparse(value)
     if parsed.scheme in ("http", "https"):
-        return value
+        return sanitize_http_url(value)
     if value.startswith("/"):
-        return urljoin(base_url, value)
+        return sanitize_http_url(urljoin(base_url, value))
     return ""
+
+
+def sanitize_http_url(url):
+    try:
+        parts = urlsplit(str(url).strip())
+    except Exception:
+        return ""
+    if parts.scheme not in ("http", "https"):
+        return ""
+    if not parts.netloc:
+        return ""
+    path = quote(parts.path or "/", safe="/%:@+~!$&'()*;,=-._")
+    query = quote(parts.query or "", safe="=&%:@+~!$'()*,;/?-._")
+    fragment = ""
+    clean = urlunsplit((parts.scheme, parts.netloc, path, query, fragment))
+    if CONTROL_CHAR_RE.search(clean):
+        return ""
+    return clean
 
 
 def follow_redirects(url):
