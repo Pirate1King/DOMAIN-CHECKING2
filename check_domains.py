@@ -15,8 +15,8 @@ USER_AGENT = "Mozilla/5.0 (compatible; DomainCheck/1.0)"
 TIMEOUT_SECS = 15
 MAX_REDIRECTS = 5
 MAX_WRAPPER_PROBES = 20
-MAX_WRAPPER_PROBES_SUBPAGE = 80
-WRAPPER_TIMEOUT_SECS = 6
+MAX_WRAPPER_PROBES_SUBPAGE = 40
+WRAPPER_TIMEOUT_SECS = 4
 PAGE_RETRY_DELAY_SECS = 0.6
 WRAPPED_URL_KEYS = {
     "url",
@@ -563,19 +563,6 @@ def is_same_host(base_url, candidate_url):
 def discover_wrapped_tracking_links(url, scan_subpages=False):
     found = []
 
-    no_redirect = fetch_url(url, allow_redirects=False, timeout_secs=WRAPPER_TIMEOUT_SECS)
-    loc = (no_redirect.get("location") or "").strip()
-    if loc:
-        loc_abs = urljoin(url, loc)
-        for tracking_url in extract_tracking_from_raw(loc_abs, url):
-            found.append(
-                {
-                    "url": tracking_url,
-                    "via_type": "wrapped_redirect",
-                    "subpage_from": "",
-                }
-            )
-
     followed = fetch_url(url, allow_redirects=True, timeout_secs=WRAPPER_TIMEOUT_SECS)
     final_url = (followed.get("final_url") or "").strip()
     if final_url:
@@ -606,6 +593,21 @@ def discover_wrapped_tracking_links(url, scan_subpages=False):
                         "href": sub_item.get("href", ""),
                         "source_url": sub_item.get("source_url", ""),
                         "node_id": sub_item.get("node_id", 0),
+                    }
+                )
+
+    # Fallback: if nothing found, inspect raw Location without following redirects.
+    if not found:
+        no_redirect = fetch_url(url, allow_redirects=False, timeout_secs=WRAPPER_TIMEOUT_SECS)
+        loc = (no_redirect.get("location") or "").strip()
+        if loc:
+            loc_abs = urljoin(url, loc)
+            for tracking_url in extract_tracking_from_raw(loc_abs, url):
+                found.append(
+                    {
+                        "url": tracking_url,
+                        "via_type": "wrapped_redirect",
+                        "subpage_from": "",
                     }
                 )
 
