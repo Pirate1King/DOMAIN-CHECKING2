@@ -1097,15 +1097,12 @@
             const wrappedFrom = escapeHtml(String(item.wrapped_from || ""));
             const subpageFromRaw = String(item.subpage_from || "");
             const subpageFrom = escapeHtml(subpageFromRaw);
-            const sourceType = String(item.source_type || "").toLowerCase();
             const subpageOpenButton = subpageFrom
               ? `<a class="tooltip-open-link" href="${subpageFrom}" target="_blank" rel="noopener noreferrer">open subpage</a>`
               : "";
-            const sourcePill = sourceType === "wrapped_redirect"
-              ? `<div class="tooltip-pill wrapped">nguon: redirect</div>`
-              : (sourceType === "subpage_direct"
-                ? `<div class="tooltip-pill subpage">nguon: trang con</div>`
-                : `<div class="tooltip-pill direct">nguon: trang chu</div>`);
+            const sourcePill = subpageFromRaw
+              ? `<div class="tooltip-pill subpage">nguon: trang con</div>`
+              : `<div class="tooltip-pill direct">nguon: trang chu</div>`;
             const pathLine = wrappedFrom
               ? `<div class="path-grid">
                   <div class="path-row"><div class="path-label">1. link tracking</div><div class="path-value">${link}</div></div>
