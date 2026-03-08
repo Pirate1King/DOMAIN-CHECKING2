@@ -225,7 +225,7 @@
         border: 1px solid #1d6a49;
         border-radius: 10px;
         background: #07160f;
-        color: var(--ink);
+        color: #bfffe4;
         padding: 10px 12px;
         box-shadow: 0 14px 32px rgba(0, 0, 0, 0.35);
         white-space: normal;
@@ -234,9 +234,17 @@
       .help-wrap:focus-within .help-tooltip {
         display: block;
       }
-      .help-tooltip ul {
+      .help-tooltip ol {
         margin: 0;
-        padding-left: 16px;
+        padding-left: 20px;
+      }
+      .help-tooltip li {
+        color: #8ff5ca;
+        line-height: 1.45;
+        margin: 3px 0;
+      }
+      .help-tooltip code {
+        color: #d6ffe9;
       }
       .actions {
         display: flex;
@@ -539,11 +547,11 @@
         <div class="hint">Paste one domain per line</div>
         <textarea id="domains"></textarea>
         <div class="row">
+          <button id="runBtn">Run Check</button>
           <label class="toggle">
             <input id="scanWrapped" type="checkbox">
-            quét link bọc (chậm hơn)
+            scan link bọc
           </label>
-          <button id="runBtn">Run Check</button>
           <div id="status" class="hint"></div>
         </div>
       </div>
@@ -579,14 +587,14 @@
         <div class="help-wrap">
           <span class="help-icon" tabindex="0" aria-label="Giải thích lỗi">i</span>
           <div class="help-tooltip" role="tooltip">
-            <ul>
-              <li>domain không truy cập được: trang trả về 0, 4xx/5xx, dns hoặc timeout.</li>
-              <li>lỗi tracking (tracking_error): link tracking redirect 301/302/307/308 sang domain khác.</li>
-              <li>thiếu https: link http bị redirect sang cùng link https.</li>
-              <li>link bọc chưa đổi domain mới: link trên ui đi qua link trung gian rồi mới ra tracking cũ.</li>
-              <li>link nằm ở trang con: từ link nội bộ vào trang con và phát hiện tracking lỗi trong trang đó.</li>
-              <li>no tracking links: domain vào được nhưng không tìm thấy link chứa <code>a=mswl</code>.</li>
-            </ul>
+            <ol>
+              <li>Domain không truy cập được: Trang trả về 0, 4xx/5xx, DNS hoặc timeout.</li>
+              <li>Lỗi tracking (tracking_error): Link tracking redirect 301/302/307/308 sang domain khác.</li>
+              <li>Thiếu https: Link http bị redirect sang cùng link https.</li>
+              <li>Link bọc chưa đổi domain mới: Link trên UI đi qua link trung gian rồi mới ra tracking cũ.</li>
+              <li>Link nằm ở trang con: Từ link nội bộ vào trang con và phát hiện tracking lỗi trong trang đó.</li>
+              <li>No tracking links: Domain vào được nhưng không tìm thấy link chứa <code>a=mswl</code>.</li>
+            </ol>
           </div>
         </div>
       </div>
