@@ -381,7 +381,6 @@ def dedupe_tracking_links(links):
     seen = set()
     for item in links or []:
         key = (
-            int(item.get("node_id") or 0),
             str(item.get("url") or "").strip().lower(),
             str(item.get("context") or "").strip().lower(),
             str(item.get("href") or "").strip().lower(),
