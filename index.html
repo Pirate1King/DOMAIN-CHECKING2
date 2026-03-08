@@ -198,7 +198,11 @@
         flex-wrap: wrap;
         margin-top: 10px;
       }
-      .filter-select {
+      .filter-dropdown {
+        position: relative;
+        min-width: 260px;
+      }
+      .filter-trigger {
         background: #07160f;
         color: var(--ink);
         border: 1px solid #1d6a49;
@@ -206,17 +210,56 @@
         padding: 8px 10px;
         font-family: "Share Tech Mono", "Consolas", monospace;
         font-size: 12px;
-        min-width: 240px;
+        min-width: 260px;
         box-shadow: inset 0 0 0 1px rgba(24, 255, 134, 0.12);
+        cursor: pointer;
+        list-style: none;
+        user-select: none;
       }
-      .filter-select:focus {
+      .filter-trigger::-webkit-details-marker {
+        display: none;
+      }
+      .filter-trigger::after {
+        content: "▾";
+        float: right;
+        color: var(--muted);
+      }
+      .filter-dropdown[open] .filter-trigger::after {
+        content: "▴";
+      }
+      .filter-trigger:focus {
         outline: none;
         border-color: var(--accent);
         box-shadow: 0 0 0 2px rgba(24, 255, 134, 0.18);
       }
-      .filter-select option {
+      .filter-menu {
+        position: absolute;
+        top: calc(100% + 6px);
+        left: 0;
+        z-index: 6;
+        min-width: 280px;
+        max-width: min(360px, 90vw);
+        padding: 8px;
+        border-radius: 10px;
+        border: 1px solid #1d6a49;
         background: #07160f;
+        box-shadow: 0 14px 32px rgba(0, 0, 0, 0.35);
+      }
+      .filter-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 6px 6px;
         color: var(--ink);
+        font-size: 12px;
+      }
+      .filter-item input {
+        accent-color: var(--accent);
+      }
+      .filter-help {
+        color: var(--muted);
+        font-size: 11px;
+        padding: 4px 6px 2px;
       }
       .copy-btn {
         display: inline-flex;
@@ -249,7 +292,7 @@
         color: var(--muted);
         font-size: 12px;
       }
-      .filter-help {
+      .filter-help-inline {
         color: var(--muted);
         font-size: 11px;
       }
@@ -468,12 +511,21 @@
           align-items: stretch;
         }
         .actions .copy-btn,
-        .actions .filter-select {
+        .actions .filter-dropdown {
           flex: 1 1 calc(50% - 8px);
           min-width: 0;
         }
         .actions .copy-btn {
           justify-content: center;
+        }
+        .filter-trigger {
+          min-width: 0;
+          width: 100%;
+        }
+        .filter-menu {
+          min-width: 0;
+          width: 100%;
+          max-width: 100%;
         }
         .actions .webhook-input {
           flex: 1 1 100%;
@@ -522,14 +574,18 @@
           <button id="sendChatBtn" class="copy-btn" type="button">
             Send To Google Chat
           </button>
-          <select id="errorFilter" class="filter-select" title="Filter rows (multi-select)" multiple size="5">
-            <option value="tracking_error">Lỗi tracking (tất cả)</option>
-            <option value="wrapped">Link bọc chưa đổi domain mới</option>
-            <option value="subpage">Link nằm ở trang con</option>
-            <option value="access_error">Domain không truy cập được</option>
-            <option value="missing_https">Thiếu https (http bị redirect)</option>
-          </select>
-          <span class="filter-help">Giữ Ctrl/Cmd để chọn nhiều</span>
+          <details id="filterDropdown" class="filter-dropdown">
+            <summary id="filterSummary" class="filter-trigger">Filter: Tất cả</summary>
+            <div class="filter-menu">
+              <label class="filter-item"><input type="checkbox" class="error-filter-checkbox" value="tracking_error">Lỗi tracking (tất cả)</label>
+              <label class="filter-item"><input type="checkbox" class="error-filter-checkbox" value="wrapped">Link bọc chưa đổi domain mới</label>
+              <label class="filter-item"><input type="checkbox" class="error-filter-checkbox" value="subpage">Link nằm ở trang con</label>
+              <label class="filter-item"><input type="checkbox" class="error-filter-checkbox" value="access_error">Domain không truy cập được</label>
+              <label class="filter-item"><input type="checkbox" class="error-filter-checkbox" value="missing_https">Thiếu https (http bị redirect)</label>
+              <div class="filter-help">Tick nhiều mục để lọc nhiều điều kiện.</div>
+            </div>
+          </details>
+          <span class="filter-help-inline">Bỏ tick hết = hiện tất cả</span>
           <div class="scroll-hint"></div>
         </div>
         <div class="actions">
@@ -572,7 +628,8 @@
       const progressBar = document.getElementById("progressBar");
       const progressText = document.getElementById("progressText");
       const summaryBox = document.getElementById("summaryBox");
-      const errorFilter = document.getElementById("errorFilter");
+      const filterSummary = document.getElementById("filterSummary");
+      const errorFilterCheckboxes = Array.from(document.querySelectorAll(".error-filter-checkbox"));
       let lastData = null;
       let pollTimer = null;
       let activeDetailCell = null;
@@ -582,9 +639,22 @@
         statusEl.textContent = text;
       }
 
+      function updateFilterSummaryText() {
+        if (!filterSummary) return;
+        const selectedLabels = errorFilterCheckboxes
+          .filter((cb) => cb.checked)
+          .map((cb) => {
+            const label = cb.parentElement;
+            if (!label) return cb.value;
+            return (label.textContent || "").trim();
+          });
+        filterSummary.textContent = selectedLabels.length
+          ? `Filter: ${selectedLabels.length} mục`
+          : "Filter: Tất cả";
+      }
+
       function getSelectedFilters() {
-        if (!errorFilter) return [];
-        return Array.from(errorFilter.selectedOptions || []).map((opt) => opt.value);
+        return errorFilterCheckboxes.filter((cb) => cb.checked).map((cb) => cb.value);
       }
 
       function getFilteredRowsAndIndexes(header, rows, details) {
@@ -1297,12 +1367,16 @@
         return `${statLine}${issues}`;
       }
 
-      errorFilter.addEventListener("change", () => {
-        if (!lastData) return;
-        hideTooltip();
-        const view = getFilteredRowsAndIndexes(lastData.header, lastData.rows, lastData.details || []);
-        renderTable(lastData.header, view.rows, view.indexes);
+      errorFilterCheckboxes.forEach((cb) => {
+        cb.addEventListener("change", () => {
+          updateFilterSummaryText();
+          if (!lastData) return;
+          hideTooltip();
+          const view = getFilteredRowsAndIndexes(lastData.header, lastData.rows, lastData.details || []);
+          renderTable(lastData.header, view.rows, view.indexes);
+        });
       });
+      updateFilterSummaryText();
     </script>
   </body>
 </html>
