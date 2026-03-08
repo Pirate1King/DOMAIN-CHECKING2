@@ -312,6 +312,7 @@ def extract_tracking_links(html_bytes, base_url, scan_subpages=False):
                         "source_url": normalize_candidate_url(href, base_url),
                         "wrapped_from": "",
                         "subpage_from": "",
+                        "source_type": "direct",
                     }
                 )
             for candidate_url in extract_url_candidates(raw, base_url):
@@ -335,6 +336,8 @@ def extract_tracking_links(html_bytes, base_url, scan_subpages=False):
                 )
 
     wrapper_candidates.sort(key=lambda x: x.get("score", 0), reverse=True)
+    if not scan_subpages:
+        return links
 
     probes = 0
     for cand in wrapper_candidates:
@@ -371,6 +374,7 @@ def extract_tracking_links(html_bytes, base_url, scan_subpages=False):
                     "source_url": cand.get("url", ""),
                     "wrapped_from": wrapped_from,
                     "subpage_from": subpage_from,
+                    "source_type": via_type or "wrapped_redirect",
                 }
             )
     return links
@@ -387,6 +391,7 @@ def dedupe_tracking_links(links):
             str(item.get("source_url") or "").strip().lower(),
             str(item.get("wrapped_from") or "").strip().lower(),
             str(item.get("subpage_from") or "").strip().lower(),
+            str(item.get("source_type") or "").strip().lower(),
         )
         if key in seen:
             continue
@@ -546,7 +551,7 @@ def discover_wrapped_tracking_links(url, scan_subpages=False):
                         {
                             "url": tracking_url,
                             "via_type": "subpage_direct",
-                            "subpage_from": final_url or url,
+                            "subpage_from": url,
                         }
                     )
 
@@ -876,6 +881,7 @@ def process_domain(domain, out_header, ignore_https_redirect=False, scan_subpage
                     "source_url": link.get("source_url", ""),
                     "wrapped_from": link.get("wrapped_from", ""),
                     "subpage_from": link.get("subpage_from", ""),
+                    "source_type": link.get("source_type", "direct"),
                 }
             )
             continue
@@ -894,6 +900,7 @@ def process_domain(domain, out_header, ignore_https_redirect=False, scan_subpage
                         "source_url": link.get("source_url", ""),
                         "wrapped_from": link.get("wrapped_from", ""),
                         "subpage_from": link.get("subpage_from", ""),
+                        "source_type": link.get("source_type", "direct"),
                         "error_type": "",
                     }
                 )
@@ -908,6 +915,7 @@ def process_domain(domain, out_header, ignore_https_redirect=False, scan_subpage
                     "source_url": link.get("source_url", ""),
                     "wrapped_from": link.get("wrapped_from", ""),
                     "subpage_from": link.get("subpage_from", ""),
+                    "source_type": link.get("source_type", "direct"),
                     "error_type": "missing_https",
                 }
             )
@@ -924,6 +932,7 @@ def process_domain(domain, out_header, ignore_https_redirect=False, scan_subpage
                     "source_url": link.get("source_url", ""),
                     "wrapped_from": link.get("wrapped_from", ""),
                     "subpage_from": link.get("subpage_from", ""),
+                    "source_type": link.get("source_type", "direct"),
                     "error_type": "domain_redirect",
                 }
             )
@@ -938,6 +947,7 @@ def process_domain(domain, out_header, ignore_https_redirect=False, scan_subpage
                     "source_url": link.get("source_url", ""),
                     "wrapped_from": link.get("wrapped_from", ""),
                     "subpage_from": link.get("subpage_from", ""),
+                    "source_type": link.get("source_type", "direct"),
                     "error_type": "",
                 }
             )
