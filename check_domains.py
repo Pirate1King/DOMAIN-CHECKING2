@@ -297,6 +297,8 @@ def extract_tracking_links(html_bytes, base_url):
                 key = (
                     found.lower(),
                     node_id,
+                    (item.get("context", "") or "").strip().lower(),
+                    (href or "").strip().lower(),
                 )
                 if key in seen:
                     continue
@@ -353,6 +355,8 @@ def extract_tracking_links(html_bytes, base_url):
             key = (
                 found.lower(),
                 int(cand.get("node_id") or 0),
+                (cand.get("context", "") or "").strip().lower(),
+                (cand.get("href", "") or "").strip().lower(),
             )
             if key in seen:
                 continue
