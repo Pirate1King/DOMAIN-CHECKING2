@@ -275,7 +275,7 @@ def fetch_homepage_with_retry(domain):
     return second
 
 
-def extract_tracking_links(html_bytes, base_url, scan_subpages=False):
+def extract_direct_tracking_links_from_html(html_bytes, base_url, source_type="direct", subpage_from=""):
     try:
         html_text = html_bytes.decode("utf-8", errors="ignore")
     except Exception:
@@ -284,8 +284,6 @@ def extract_tracking_links(html_bytes, base_url, scan_subpages=False):
     parser.feed(html_text)
     links = []
     seen = set()
-    wrapper_candidates = []
-    wrapper_seen = set()
     for item in parser.links:
         href = item.get("href", "") or ""
         node_id = int(item.get("node_id") or 0)
@@ -311,10 +309,44 @@ def extract_tracking_links(html_bytes, base_url, scan_subpages=False):
                         "href": href,
                         "source_url": normalize_candidate_url(href, base_url),
                         "wrapped_from": "",
-                        "subpage_from": "",
-                        "source_type": "direct",
+                        "subpage_from": subpage_from,
+                        "source_type": source_type,
                     }
                 )
+    return links
+
+
+def extract_tracking_links(html_bytes, base_url, scan_subpages=False):
+    links = extract_direct_tracking_links_from_html(
+        html_bytes,
+        base_url,
+        source_type="direct",
+        subpage_from="",
+    )
+    seen = set(
+        (
+            str(item.get("url") or "").strip().lower(),
+            int(item.get("node_id") or 0),
+            str(item.get("context") or "").strip().lower(),
+            str(item.get("href") or "").strip().lower(),
+        )
+        for item in links
+    )
+    try:
+        html_text = html_bytes.decode("utf-8", errors="ignore")
+    except Exception:
+        html_text = ""
+    parser = HrefCollector()
+    parser.feed(html_text)
+    wrapper_candidates = []
+    wrapper_seen = set()
+    for item in parser.links:
+        href = item.get("href", "") or ""
+        node_id = int(item.get("node_id") or 0)
+        attrs = item.get("attrs", {}) or {}
+        candidates = [href]
+        candidates.extend(str(v) for v in attrs.values() if v)
+        for raw in candidates:
             for candidate_url in extract_url_candidates(raw, base_url):
                 if not is_likely_wrapper_candidate(candidate_url, item, base_url):
                     continue
@@ -351,16 +383,32 @@ def extract_tracking_links(html_bytes, base_url, scan_subpages=False):
             found = wrapped_item.get("url", "")
             via_type = wrapped_item.get("via_type", "")
             subpage_from = wrapped_item.get("subpage_from", "")
+            context_from_item = wrapped_item.get("context", "")
+            href_from_item = wrapped_item.get("href", "")
+            source_url_from_item = wrapped_item.get("source_url", "")
+            node_from_item = int(wrapped_item.get("node_id") or 0)
             context_suffix = f"; wrapped_from={cand['url']}"
             wrapped_from = cand.get("url", "")
+            context_for_entry = cand.get("context", "no_text")
+            href_for_entry = cand.get("href", "")
+            source_url_for_entry = cand.get("url", "")
+            node_for_entry = int(cand.get("node_id") or 0)
             if via_type == "subpage_direct":
                 context_suffix = f"; subpage_from={subpage_from or cand['url']}"
                 wrapped_from = ""
+                if context_from_item:
+                    context_for_entry = context_from_item
+                if href_from_item:
+                    href_for_entry = href_from_item
+                if source_url_from_item:
+                    source_url_for_entry = source_url_from_item
+                if node_from_item:
+                    node_for_entry = node_from_item
             key = (
                 found.lower(),
-                int(cand.get("node_id") or 0),
-                (cand.get("context", "") or "").strip().lower(),
-                (cand.get("href", "") or "").strip().lower(),
+                node_for_entry,
+                (context_for_entry or "").strip().lower(),
+                (href_for_entry or "").strip().lower(),
             )
             if key in seen:
                 continue
@@ -368,10 +416,10 @@ def extract_tracking_links(html_bytes, base_url, scan_subpages=False):
             links.append(
                 {
                     "url": found,
-                    "node_id": int(cand.get("node_id") or 0),
-                    "context": f"{cand['context']}{context_suffix}",
-                    "href": cand.get("href", ""),
-                    "source_url": cand.get("url", ""),
+                    "node_id": node_for_entry,
+                    "context": f"{context_for_entry}{context_suffix}",
+                    "href": href_for_entry,
+                    "source_url": source_url_for_entry,
                     "wrapped_from": wrapped_from,
                     "subpage_from": subpage_from,
                     "source_type": via_type or "wrapped_redirect",
@@ -541,19 +589,23 @@ def discover_wrapped_tracking_links(url, scan_subpages=False):
     if scan_subpages:
         body = followed.get("body") or b""
         if body:
-            try:
-                text = body.decode("utf-8", errors="ignore")
-            except Exception:
-                text = ""
-            if text:
-                for tracking_url in extract_tracking_from_raw(text, url):
-                    found.append(
-                        {
-                            "url": tracking_url,
-                            "via_type": "subpage_direct",
-                            "subpage_from": url,
-                        }
-                    )
+            for sub_item in extract_direct_tracking_links_from_html(
+                body,
+                final_url or url,
+                source_type="subpage_direct",
+                subpage_from=(final_url or url),
+            ):
+                found.append(
+                    {
+                        "url": sub_item.get("url", ""),
+                        "via_type": "subpage_direct",
+                        "subpage_from": sub_item.get("subpage_from", final_url or url),
+                        "context": sub_item.get("context", "no_text"),
+                        "href": sub_item.get("href", ""),
+                        "source_url": sub_item.get("source_url", ""),
+                        "node_id": sub_item.get("node_id", 0),
+                    }
+                )
 
     out = []
     seen = set()
@@ -561,7 +613,14 @@ def discover_wrapped_tracking_links(url, scan_subpages=False):
         val = item.get("url", "")
         via_type = item.get("via_type", "")
         subpage_from = item.get("subpage_from", "")
-        key = (val.lower(), via_type, subpage_from.lower())
+        key = (
+            val.lower(),
+            via_type,
+            subpage_from.lower(),
+            str(item.get("context") or "").strip().lower(),
+            str(item.get("href") or "").strip().lower(),
+            int(item.get("node_id") or 0),
+        )
         if key in seen:
             continue
         seen.add(key)
