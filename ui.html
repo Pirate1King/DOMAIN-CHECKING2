@@ -249,6 +249,10 @@
         position: relative;
         min-width: 260px;
       }
+      .filter-dropdown.is-disabled {
+        opacity: 0.45;
+        pointer-events: none;
+      }
       .filter-trigger {
         background: #07160f;
         color: var(--ink);
@@ -677,6 +681,7 @@
       const progressBar = document.getElementById("progressBar");
       const progressText = document.getElementById("progressText");
       const summaryBox = document.getElementById("summaryBox");
+      const filterDropdown = document.getElementById("filterDropdown");
       const filterSummary = document.getElementById("filterSummary");
       const errorFilterCheckboxes = Array.from(document.querySelectorAll(".error-filter-checkbox"));
       let lastData = null;
@@ -686,6 +691,16 @@
 
       function setStatus(text) {
         statusEl.textContent = text;
+      }
+
+      function setFilterEnabled(enabled) {
+        if (!filterDropdown) return;
+        if (enabled) {
+          filterDropdown.classList.remove("is-disabled");
+        } else {
+          filterDropdown.classList.add("is-disabled");
+          filterDropdown.removeAttribute("open");
+        }
       }
 
       function updateFilterSummaryText() {
@@ -1062,6 +1077,7 @@
           return;
         }
         runBtn.disabled = true;
+        setFilterEnabled(false);
         setStatus("Starting...");
         progressBar.style.width = "0%";
         progressText.textContent = `Processed 0/${domains.length}`;
@@ -1338,6 +1354,12 @@
         }
       });
 
+      document.addEventListener("click", (event) => {
+        if (!filterDropdown || !filterDropdown.hasAttribute("open")) return;
+        if (filterDropdown.contains(event.target)) return;
+        filterDropdown.removeAttribute("open");
+      });
+
       function startPolling(jobId) {
         if (pollTimer) {
           clearInterval(pollTimer);
@@ -1354,6 +1376,7 @@
             const view = getFilteredRowsAndIndexes(data.header, data.rows, data.details || []);
             renderTable(data.header, view.rows, view.indexes);
             summaryBox.innerHTML = renderSummaryBox(data.header, data.rows, data.details || []);
+            setFilterEnabled(Boolean(data.done && (data.rows || []).length));
             if (data.error) {
               setStatus(`Error: ${data.error}`);
               clearInterval(pollTimer);
@@ -1440,6 +1463,7 @@
         });
       });
       updateFilterSummaryText();
+      setFilterEnabled(false);
     </script>
   </body>
 </html>
