@@ -17,6 +17,7 @@ MAX_REDIRECTS = 5
 MAX_WRAPPER_PROBES = 8
 MAX_WRAPPER_PROBES_SUBPAGE = 25
 WRAPPER_TIMEOUT_SECS = 3
+WRAPPER_USE_LOCATION_FALLBACK = False
 PAGE_RETRY_DELAY_SECS = 0.6
 WRAPPED_URL_KEYS = {
     "url",
@@ -372,13 +373,18 @@ def extract_tracking_links(html_bytes, base_url, scan_subpages=False):
 
     probes = 0
     probe_limit = MAX_WRAPPER_PROBES_SUBPAGE if scan_subpages else MAX_WRAPPER_PROBES
+    wrapped_cache = {}
     for cand in wrapper_candidates:
         if probes >= probe_limit:
             break
         if TRACKING_TOKEN in cand["url"].lower():
             continue
         probes += 1
-        wrapped_links = discover_wrapped_tracking_links(cand["url"], scan_subpages=scan_subpages)
+        cache_key = (cand["url"], bool(scan_subpages))
+        wrapped_links = wrapped_cache.get(cache_key)
+        if wrapped_links is None:
+            wrapped_links = discover_wrapped_tracking_links(cand["url"], scan_subpages=scan_subpages)
+            wrapped_cache[cache_key] = wrapped_links
         for wrapped_item in wrapped_links:
             found = wrapped_item.get("url", "")
             via_type = wrapped_item.get("via_type", "")
@@ -484,7 +490,12 @@ def is_likely_wrapper_candidate(candidate_url, item, base_url):
         return False
 
     if is_same_host(base_url, candidate_url):
-        return True
+        # In normal mode, skip generic homepage-like internal links to avoid slow probing.
+        path = (parsed.path or "").strip()
+        if path and path != "/":
+            return True
+        if parsed.query:
+            return True
 
     hints = (
         "dang-ky",
@@ -595,7 +606,7 @@ def discover_wrapped_tracking_links(url, scan_subpages=False):
                         "subpage_from": "",
                     }
                 )
-        if not found:
+        if not found and WRAPPER_USE_LOCATION_FALLBACK:
             no_redirect = fetch_url(url, allow_redirects=False, timeout_secs=WRAPPER_TIMEOUT_SECS)
             loc = (no_redirect.get("location") or "").strip()
             if loc:
