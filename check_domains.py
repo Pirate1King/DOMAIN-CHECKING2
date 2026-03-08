@@ -353,8 +353,6 @@ def extract_tracking_links(html_bytes, base_url):
             key = (
                 found.lower(),
                 int(cand.get("node_id") or 0),
-                via_type,
-                (subpage_from or "").lower(),
             )
             if key in seen:
                 continue
