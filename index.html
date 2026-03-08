@@ -201,11 +201,22 @@
       .filter-select {
         background: #07160f;
         color: var(--ink);
-        border: 1px solid var(--border);
+        border: 1px solid #1d6a49;
         border-radius: 8px;
         padding: 8px 10px;
         font-family: "Share Tech Mono", "Consolas", monospace;
         font-size: 12px;
+        min-width: 240px;
+        box-shadow: inset 0 0 0 1px rgba(24, 255, 134, 0.12);
+      }
+      .filter-select:focus {
+        outline: none;
+        border-color: var(--accent);
+        box-shadow: 0 0 0 2px rgba(24, 255, 134, 0.18);
+      }
+      .filter-select option {
+        background: #07160f;
+        color: var(--ink);
       }
       .copy-btn {
         display: inline-flex;
@@ -486,10 +497,6 @@
         <textarea id="domains"></textarea>
         <div class="row">
           <button id="runBtn">Run Check</button>
-          <label class="toggle">
-            <input id="ignoreHttps" type="checkbox" checked>
-            Bypass lỗi thiếu "s" trong https (http -> https)
-          </label>
           <div id="status" class="hint"></div>
         </div>
       </div>
@@ -511,12 +518,12 @@
           <button id="sendChatBtn" class="copy-btn" type="button">
             Send To Google Chat
           </button>
-          <select id="errorFilter" class="filter-select" title="Filter rows">
-            <option value="all">Filter: Tất cả</option>
-            <option value="tracking_error">Filter: Có tracking_error</option>
-            <option value="wrapped">Filter: Bọc link</option>
-            <option value="subpage">Filter: Trang con</option>
-            <option value="access_error">Filter: Lỗi truy cập domain</option>
+          <select id="errorFilter" class="filter-select" title="Filter rows (multi-select)" multiple size="5">
+            <option value="tracking_error">Có tracking_error</option>
+            <option value="wrapped">Bọc link</option>
+            <option value="subpage">Trang con</option>
+            <option value="access_error">Lỗi truy cập domain</option>
+            <option value="missing_https">Lỗi thiếu s trong https</option>
           </select>
           <div class="scroll-hint"></div>
         </div>
@@ -552,7 +559,6 @@
       const copyTableBtn = document.getElementById("copyTableBtn");
       const sendChatBtn = document.getElementById("sendChatBtn");
       const webhookUrl = document.getElementById("webhookUrl");
-      const ignoreHttps = document.getElementById("ignoreHttps");
       const tooltip = document.getElementById("tooltip");
       const tooltipTitle = document.getElementById("tooltipTitle");
       const tooltipSubtitle = document.getElementById("tooltipSubtitle");
@@ -571,10 +577,15 @@
         statusEl.textContent = text;
       }
 
+      function getSelectedFilters() {
+        if (!errorFilter) return [];
+        return Array.from(errorFilter.selectedOptions || []).map((opt) => opt.value);
+      }
+
       function getFilteredRowsAndIndexes(header, rows, details) {
-        const filter = (errorFilter && errorFilter.value) || "all";
+        const selected = getSelectedFilters();
         const sourceRows = rows || [];
-        if (!sourceRows.length || filter === "all") {
+        if (!sourceRows.length || !selected.length) {
           return { rows: sourceRows, indexes: sourceRows.map((_, idx) => idx) };
         }
         const idxPageStatus = header.indexOf("page_status");
@@ -587,11 +598,15 @@
           const badLinks = ((details || [])[idx] || {}).tracking_error || [];
           const hasWrapped = badLinks.some((item) => String(item.wrapped_from || "").trim());
           const hasSubpage = badLinks.some((item) => String(item.subpage_from || "").trim() && !String(item.wrapped_from || "").trim());
-          let keep = false;
-          if (filter === "tracking_error") keep = trackingError > 0;
-          if (filter === "wrapped") keep = hasWrapped;
-          if (filter === "subpage") keep = hasSubpage;
-          if (filter === "access_error") keep = pageStatus !== 200;
+          const hasMissingHttps = badLinks.some((item) => String(item.error_type || "").toLowerCase() === "missing_https");
+          const keep = selected.some((filter) => {
+            if (filter === "tracking_error") return trackingError > 0;
+            if (filter === "wrapped") return hasWrapped;
+            if (filter === "subpage") return hasSubpage;
+            if (filter === "access_error") return pageStatus !== 200;
+            if (filter === "missing_https") return hasMissingHttps;
+            return false;
+          });
           if (keep) {
             viewRows.push(row);
             indexes.push(idx);
@@ -933,7 +948,6 @@
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               domains,
-              ignore_https_redirect: ignoreHttps.checked,
             }),
           });
           if (!resp.ok) {
