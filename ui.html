@@ -624,6 +624,7 @@
           <details id="filterDropdown" class="filter-dropdown">
             <summary id="filterSummary" class="filter-trigger">Filter: Tất cả</summary>
             <div class="filter-menu">
+              <label class="filter-item"><input type="checkbox" class="error-filter-checkbox" value="all" checked>Tất cả</label>
               <label class="filter-item"><input type="checkbox" class="error-filter-checkbox" value="tracking_error">Lỗi tracking (tất cả)</label>
               <label class="filter-item"><input type="checkbox" class="error-filter-checkbox" value="wrapped">Link bọc chưa đổi domain mới</label>
               <label class="filter-item"><input type="checkbox" class="error-filter-checkbox" value="subpage">Link nằm ở trang con</label>
@@ -718,7 +719,7 @@
       function getFilteredRowsAndIndexes(header, rows, details) {
         const selected = getSelectedFilters();
         const sourceRows = rows || [];
-        if (!sourceRows.length || !selected.length) {
+        if (!sourceRows.length || !selected.length || selected.includes("all")) {
           return { rows: sourceRows, indexes: sourceRows.map((_, idx) => idx) };
         }
         const idxPageStatus = header.indexOf("page_status");
@@ -1427,6 +1428,20 @@
 
       errorFilterCheckboxes.forEach((cb) => {
         cb.addEventListener("change", () => {
+          if (cb.value === "all" && cb.checked) {
+            errorFilterCheckboxes.forEach((x) => {
+              if (x.value !== "all") x.checked = false;
+            });
+          } else if (cb.value !== "all" && cb.checked) {
+            const allCb = errorFilterCheckboxes.find((x) => x.value === "all");
+            if (allCb) allCb.checked = false;
+          } else if (cb.value !== "all") {
+            const hasNonAll = errorFilterCheckboxes.some((x) => x.value !== "all" && x.checked);
+            if (!hasNonAll) {
+              const allCb = errorFilterCheckboxes.find((x) => x.value === "all");
+              if (allCb) allCb.checked = true;
+            }
+          }
           updateFilterSummaryText();
           if (!lastData) return;
           hideTooltip();
