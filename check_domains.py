@@ -14,10 +14,10 @@ TRACKING_TOKEN = "a=mswl"
 USER_AGENT = "Mozilla/5.0 (compatible; DomainCheck/1.0)"
 TIMEOUT_SECS = 15
 MAX_REDIRECTS = 5
-MAX_WRAPPER_PROBES = 8
+MAX_WRAPPER_PROBES = 12
 MAX_WRAPPER_PROBES_SUBPAGE = 25
 WRAPPER_TIMEOUT_SECS = 3
-WRAPPER_USE_LOCATION_FALLBACK = False
+WRAPPER_USE_LOCATION_FALLBACK = True
 PAGE_RETRY_DELAY_SECS = 0.6
 WRAPPED_URL_KEYS = {
     "url",
@@ -248,13 +248,17 @@ def pick_homepage(domain):
 
 
 def fetch_homepage(domain):
+    candidates = []
     last_error = ""
     for candidate in pick_homepage(domain):
         result = fetch_url(candidate, allow_redirects=True)
-        if result["status"] != 0:
-            result["page_url"] = candidate
-            return result
-        last_error = result["error"]
+        result["page_url"] = candidate
+        candidates.append(result)
+        if result.get("error"):
+            last_error = result["error"]
+    best = choose_best_page_result(candidates)
+    if best:
+        return best
     return {
         "status": 0,
         "final_url": "",
@@ -265,16 +269,52 @@ def fetch_homepage(domain):
     }
 
 
+def page_status_score(status):
+    if status == 200:
+        return 700
+    if 200 <= status < 300:
+        return 600 - abs(status - 200)
+    if 300 <= status < 400:
+        return 500 - status
+    if status in (401, 403):
+        return 350 - status
+    if 400 <= status < 500:
+        return 300 - status
+    if 500 <= status < 600:
+        return 200 - status
+    return 0
+
+
+def choose_best_page_result(results):
+    best = None
+    best_score = -1
+    for item in results or []:
+        score = page_status_score(int(item.get("status") or 0))
+        if score > best_score:
+            best = item
+            best_score = score
+    return best
+
+
+def should_retry_page_status(status):
+    if status == 0:
+        return True
+    if status in (403, 404):
+        return True
+    if 500 <= status < 600:
+        return True
+    return False
+
+
 def fetch_homepage_with_retry(domain):
     first = fetch_homepage(domain)
-    if first["status"] == 200:
+    if not should_retry_page_status(first["status"]):
         return first
-    # Retry once for non-200 to reduce false alarms from transient responses.
+    # Retry once for unstable/borderline status to reduce false alarms.
     time.sleep(PAGE_RETRY_DELAY_SECS)
     second = fetch_homepage(domain)
-    if second["status"] == 200:
-        return second
-    return second
+    best = choose_best_page_result([first, second])
+    return best or second
 
 
 def extract_direct_tracking_links_from_html(html_bytes, base_url, source_type="direct", subpage_from=""):
@@ -489,14 +529,6 @@ def is_likely_wrapper_candidate(candidate_url, item, base_url):
     if path and any(path.endswith(ext) for ext in STATIC_EXTENSIONS):
         return False
 
-    if is_same_host(base_url, candidate_url):
-        # In normal mode, skip generic homepage-like internal links to avoid slow probing.
-        path = (parsed.path or "").strip()
-        if path and path != "/":
-            return True
-        if parsed.query:
-            return True
-
     hints = (
         "dang-ky",
         "dangky",
@@ -516,6 +548,14 @@ def is_likely_wrapper_candidate(candidate_url, item, base_url):
     )
     for token in hints:
         if token in url or token in context or token in href:
+            return True
+
+    if is_same_host(base_url, candidate_url):
+        # Keep same-host candidates with path/query for wrapped-link coverage.
+        path = (parsed.path or "").strip()
+        if path and path != "/":
+            return True
+        if parsed.query:
             return True
 
     if any(key + "=" in url for key in WRAPPED_URL_KEYS):
@@ -606,6 +646,22 @@ def discover_wrapped_tracking_links(url, scan_subpages=False):
                         "subpage_from": "",
                     }
                 )
+        if not found:
+            body = followed.get("body") or b""
+            if body:
+                try:
+                    body_text = body.decode("utf-8", errors="ignore")
+                except Exception:
+                    body_text = ""
+                if body_text:
+                    for tracking_url in extract_tracking_from_raw(body_text, final_url or url):
+                        found.append(
+                            {
+                                "url": tracking_url,
+                                "via_type": "wrapped_redirect",
+                                "subpage_from": "",
+                            }
+                        )
         if not found and WRAPPER_USE_LOCATION_FALLBACK:
             no_redirect = fetch_url(url, allow_redirects=False, timeout_secs=WRAPPER_TIMEOUT_SECS)
             loc = (no_redirect.get("location") or "").strip()
