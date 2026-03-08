@@ -1209,23 +1209,6 @@
         return `${prefix}<span class="diff-highlight">${mid}</span>${suffix}`;
       }
 
-      function extractContextValue(context, key) {
-        const text = String(context || "");
-        const m = text.match(new RegExp(`${key}=([^;]+)`));
-        return m ? m[1].trim() : "";
-      }
-
-      function buildLocateUrl(pageUrl, context) {
-        const base = String(pageUrl || "").split("#")[0].trim();
-        if (!base) return "";
-        const textValue = extractContextValue(context, "text");
-        if (!textValue) return base;
-        const compact = textValue.replace(/\s+/g, " ").trim();
-        if (!compact) return base;
-        const snippet = compact.slice(0, 80);
-        return `${base}#:~:text=${encodeURIComponent(snippet)}`;
-      }
-
       function showTooltip(target, title, subtitle, list, pageUrlForLocate) {
         if (activeDetailCell) {
           activeDetailCell.classList.remove("active-detail-cell");
@@ -1255,14 +1238,6 @@
             const subpageFromRaw = String(item.subpage_from || "");
             const subpageFrom = escapeHtml(subpageFromRaw);
             const wrappedRaw = String(item.wrapped_from || "").trim();
-            const locateBaseUrl = subpageFromRaw || pageUrlForLocate;
-            const locateUrl = buildLocateUrl(locateBaseUrl, String(item.context || ""));
-            const locateButton = locateUrl
-              ? `<a class="tooltip-open-link" href="${escapeHtml(locateUrl)}" target="_blank" rel="noopener noreferrer">locate on page</a>`
-              : "";
-            const trackingOpenButton = link
-              ? `<a class="tooltip-open-link" href="${link}" target="_blank" rel="noopener noreferrer">open tracking</a>`
-              : "";
             const subpageOpenButton = subpageFrom
               ? `<a class="tooltip-open-link" href="${subpageFrom}" target="_blank" rel="noopener noreferrer">open subpage</a>`
               : "";
@@ -1288,7 +1263,7 @@
                 <div class="tooltip-label">#${idx + 1}</div>
                 <div class="tooltip-meta">status: ${reason}</div>
                 ${sourcePill}
-                <div class="tooltip-actions">${trackingOpenButton}${subpageOpenButton}${locateButton}</div>
+                ${subpageOpenButton ? `<div class="tooltip-actions">${subpageOpenButton}</div>` : ""}
                 ${pathLine}
                 <div class="tooltip-context">context: ${context}</div>
               </div>

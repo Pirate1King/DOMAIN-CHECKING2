@@ -14,7 +14,7 @@ TRACKING_TOKEN = "a=mswl"
 USER_AGENT = "Mozilla/5.0 (compatible; DomainCheck/1.0)"
 TIMEOUT_SECS = 15
 MAX_REDIRECTS = 5
-MAX_WRAPPER_PROBES = 30
+MAX_WRAPPER_PROBES = 20
 WRAPPER_TIMEOUT_SECS = 6
 PAGE_RETRY_DELAY_SECS = 0.6
 WRAPPED_URL_KEYS = {
@@ -306,6 +306,7 @@ def extract_tracking_links(html_bytes, base_url):
                 links.append(
                     {
                         "url": found,
+                        "node_id": node_id,
                         "context": item.get("context", "no_text"),
                         "href": href,
                         "source_url": normalize_candidate_url(href, base_url),
@@ -364,6 +365,7 @@ def extract_tracking_links(html_bytes, base_url):
             links.append(
                 {
                     "url": found,
+                    "node_id": int(cand.get("node_id") or 0),
                     "context": f"{cand['context']}{context_suffix}",
                     "href": cand.get("href", ""),
                     "source_url": cand.get("url", ""),
@@ -372,6 +374,26 @@ def extract_tracking_links(html_bytes, base_url):
                 }
             )
     return links
+
+
+def dedupe_tracking_links(links):
+    out = []
+    seen = set()
+    for item in links or []:
+        key = (
+            int(item.get("node_id") or 0),
+            str(item.get("url") or "").strip().lower(),
+            str(item.get("context") or "").strip().lower(),
+            str(item.get("href") or "").strip().lower(),
+            str(item.get("source_url") or "").strip().lower(),
+            str(item.get("wrapped_from") or "").strip().lower(),
+            str(item.get("subpage_from") or "").strip().lower(),
+        )
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(item)
+    return out
 
 
 def extract_url_candidates(raw, base_url):
@@ -828,6 +850,7 @@ def process_domain(domain, out_header, ignore_https_redirect=False):
         tracking_links = []
     else:
         tracking_links = extract_tracking_links(page["body"], page_final or page_url)
+        tracking_links = dedupe_tracking_links(tracking_links)
 
     tracking_total = len(tracking_links)
     tracking_ok = 0
