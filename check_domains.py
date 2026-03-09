@@ -89,11 +89,11 @@ URL_REGEX = re.compile(r"https?://[^\s'\"<>]+", re.IGNORECASE)
 QUOTED_RELATIVE_URL_REGEX = re.compile(r"""['"]((?:https?:)?//[^'"\s<>]+|/[^'"\s<>]+)['"]""", re.IGNORECASE)
 CONTROL_CHAR_RE = re.compile(r"[\x00-\x1f\x7f]")
 MOBILE_HINT_RE = re.compile(
-    r"(^|[^a-z0-9])(mobile|mobi|sp|sm-only|only-mobile|on-mobile|for-mobile|m-cta|cta-m)($|[^a-z0-9])",
+    r"(^|[^a-z0-9])(mobile|mobi|sp|sm-only|only-mobile|on-mobile|for-mobile|m-cta|cta-m|show-for-medium)($|[^a-z0-9])",
     re.IGNORECASE,
 )
 DESKTOP_HINT_RE = re.compile(
-    r"(^|[^a-z0-9])(desktop|pc|only-desktop|on-desktop|for-desktop|d-cta|cta-d|lg-only|xl-only)($|[^a-z0-9])",
+    r"(^|[^a-z0-9])(desktop|pc|only-desktop|on-desktop|for-desktop|d-cta|cta-d|lg-only|xl-only|hide-for-medium)($|[^a-z0-9])",
     re.IGNORECASE,
 )
 STATIC_EXTENSIONS = (
@@ -147,6 +147,7 @@ class HrefCollector(HTMLParser):
                 "img_alts": [],
                 "img_srcs": [],
                 "parent": self._find_parent_context(),
+                "device_context": self._find_device_context(),
             }
         elif tag == "img" and self._current is not None:
             alt = attrs_dict.get("alt")
@@ -191,6 +192,7 @@ class HrefCollector(HTMLParser):
                 "href": self._current["href"],
                 "attrs": dict(attrs),
                 "context": "; ".join(context) if context else "no_text",
+                "device_context": self._current.get("device_context", ""),
             }
         )
         self._current = None
@@ -202,17 +204,32 @@ class HrefCollector(HTMLParser):
     def _find_parent_context(self):
         for item in reversed(self._stack[:-1]):
             if item.get("id") or item.get("class"):
-                tag = item.get("tag", "")
-                ident = item.get("id")
-                cls = item.get("class")
-                parts = [tag] if tag else []
-                if ident:
-                    parts.append(f"#{ident}")
-                if cls:
-                    cls_clean = ".".join(cls.split())
-                    parts.append(f".{cls_clean}")
-                return "".join(parts)
+                return self._format_stack_item(item)
         return ""
+
+    def _find_device_context(self, limit=6):
+        items = []
+        for item in self._stack[:-1]:
+            if not (item.get("id") or item.get("class")):
+                continue
+            rendered = self._format_stack_item(item)
+            if rendered:
+                items.append(rendered)
+        if not items:
+            return ""
+        return " > ".join(items[-limit:])
+
+    def _format_stack_item(self, item):
+        tag = item.get("tag", "")
+        ident = item.get("id")
+        cls = item.get("class")
+        parts = [tag] if tag else []
+        if ident:
+            parts.append(f"#{ident}")
+        if cls:
+            cls_clean = ".".join(cls.split())
+            parts.append(f".{cls_clean}")
+        return "".join(parts)
 
     def _capture_non_anchor_candidate(self, tag, attrs_dict):
         if not attrs_dict:
@@ -254,6 +271,7 @@ class HrefCollector(HTMLParser):
                 "href": "",
                 "attrs": dict(attrs_dict),
                 "context": "; ".join(context_parts),
+                "device_context": self._find_device_context(),
             }
         )
 
@@ -585,6 +603,7 @@ def extract_direct_tracking_links_from_html(html_bytes, base_url, source_type="d
                         "url": found,
                         "node_id": node_id,
                         "context": item.get("context", "no_text"),
+                        "device_context": item.get("device_context", ""),
                         "href": href,
                         "source_url": normalize_candidate_url(href, base_url),
                         "wrapped_from": "",
@@ -616,12 +635,14 @@ def extract_tracking_links(html_bytes, base_url, scan_subpages=False, scan_wrapp
             context_for_entry = wrapped_item.get("context", "no_text")
             href_for_entry = wrapped_item.get("href", "")
             source_url_for_entry = wrapped_item.get("source_url", "")
+            device_context_for_entry = wrapped_item.get("device_context", "")
             node_for_entry = int(wrapped_item.get("node_id") or 0)
             key = tracking_identity_key(
                 {
                     "url": found,
                     "node_id": node_for_entry,
                     "context": context_for_entry,
+                    "device_context": device_context_for_entry,
                     "href": href_for_entry,
                     "source_url": source_url_for_entry,
                     "wrapped_from": "",
@@ -637,6 +658,7 @@ def extract_tracking_links(html_bytes, base_url, scan_subpages=False, scan_wrapp
                     "url": found,
                     "node_id": node_for_entry,
                     "context": f"{context_for_entry}; subpage_from={subpage_from or source_url_for_entry}",
+                    "device_context": device_context_for_entry,
                     "href": href_for_entry,
                     "source_url": source_url_for_entry,
                     "wrapped_from": "",
@@ -653,12 +675,14 @@ def extract_tracking_links(html_bytes, base_url, scan_subpages=False, scan_wrapp
             context_for_entry = wrapped_item.get("context", "no_text")
             href_for_entry = wrapped_item.get("href", "")
             source_url_for_entry = wrapped_item.get("source_url", "")
+            device_context_for_entry = wrapped_item.get("device_context", "")
             node_for_entry = int(wrapped_item.get("node_id") or 0)
             key = tracking_identity_key(
                 {
                     "url": found,
                     "node_id": node_for_entry,
                     "context": context_for_entry,
+                    "device_context": device_context_for_entry,
                     "href": href_for_entry,
                     "source_url": source_url_for_entry,
                     "wrapped_from": wrapped_from,
@@ -674,6 +698,7 @@ def extract_tracking_links(html_bytes, base_url, scan_subpages=False, scan_wrapp
                     "url": found,
                     "node_id": node_for_entry,
                     "context": f"{context_for_entry}; wrapped_from={wrapped_from}",
+                    "device_context": device_context_for_entry,
                     "href": href_for_entry,
                     "source_url": source_url_for_entry,
                     "wrapped_from": wrapped_from,
@@ -701,6 +726,7 @@ def tracking_identity_key(item):
         str(item.get("url") or "").strip().lower(),
         int(item.get("node_id") or 0),
         str(item.get("context") or "").strip().lower(),
+        str(item.get("device_context") or "").strip().lower(),
         str(item.get("href") or "").strip().lower(),
         str(item.get("source_url") or "").strip().lower(),
         str(item.get("wrapped_from") or "").strip().lower(),
@@ -914,6 +940,7 @@ def build_probe_candidates(html_text, base_url, mode="wrapped"):
                         "context": item.get("context", "no_text"),
                         "href": href,
                         "source_url": normalize_candidate_url(href, base_url),
+                        "device_context": item.get("device_context", ""),
                         "score": score,
                     }
                 )
@@ -943,6 +970,7 @@ def discover_wrapped_tracking_links(candidate):
                 "context": candidate.get("context", "no_text"),
                 "href": candidate.get("href", ""),
                 "source_url": candidate.get("source_url", "") or url,
+                "device_context": candidate.get("device_context", ""),
                 "node_id": candidate.get("node_id", 0),
             }
         )
@@ -976,6 +1004,7 @@ def discover_subpage_tracking_links(candidate):
                 "context": sub_item.get("context", "no_text"),
                 "href": sub_item.get("href", ""),
                 "source_url": sub_item.get("source_url", "") or final_url,
+                "device_context": sub_item.get("device_context", "") or candidate.get("device_context", ""),
                 "node_id": sub_item.get("node_id", 0),
             }
         )
@@ -1001,6 +1030,7 @@ def probe_candidates(candidates, mode="wrapped"):
                     str(item.get("url") or "").strip().lower(),
                     int(item.get("node_id") or 0),
                     str(item.get("context") or "").strip().lower(),
+                    str(item.get("device_context") or "").strip().lower(),
                     str(item.get("href") or "").strip().lower(),
                     str(item.get("source_url") or "").strip().lower(),
                     str(item.get("wrapped_from") or "").strip().lower(),
@@ -1221,6 +1251,7 @@ def is_different_domain_redirect(original_url, final_url):
 def detect_device_hint(link):
     parts = [
         str(link.get("context") or ""),
+        str(link.get("device_context") or ""),
         str(link.get("href") or ""),
         str(link.get("source_url") or ""),
         str(link.get("wrapped_from") or ""),
