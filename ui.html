@@ -472,6 +472,24 @@
         background: rgba(158, 224, 181, 0.12);
         border: 1px solid rgba(158, 224, 181, 0.35);
       }
+      .tooltip-pill.device {
+        margin-left: 6px;
+      }
+      .tooltip-pill.device-mobile {
+        color: #9fd6ff;
+        background: rgba(159, 214, 255, 0.12);
+        border: 1px solid rgba(159, 214, 255, 0.35);
+      }
+      .tooltip-pill.device-desktop {
+        color: #ffc68a;
+        background: rgba(255, 198, 138, 0.12);
+        border: 1px solid rgba(255, 198, 138, 0.35);
+      }
+      .tooltip-pill.device-both {
+        color: #f7ec9a;
+        background: rgba(247, 236, 154, 0.12);
+        border: 1px solid rgba(247, 236, 154, 0.35);
+      }
       .tooltip-path {
         color: var(--ink);
         font-size: 11px;
@@ -1164,6 +1182,11 @@
             const sourcePill = subpageFromRaw
               ? `<div class="tooltip-pill subpage">nguồn: trang con</div>`
               : `<div class="tooltip-pill direct">nguồn: trang chủ</div>`;
+            const deviceHint = String(item.device_hint || "").toLowerCase();
+            let devicePill = "";
+            if (deviceHint === "mobile" || deviceHint === "mobile+desktop") {
+              devicePill = `<div class="tooltip-pill device device-mobile">thiết bị: mobile</div>`;
+            }
             const pathLine = wrappedFrom
               ? `<div class="path-grid">
                   <div class="path-row"><div class="path-label">1. link tracking</div><div class="path-value">${link}</div></div>
@@ -1181,6 +1204,7 @@
                 <div class="tooltip-label">#${idx + 1}</div>
                 <div class="tooltip-meta">status: ${reason}</div>
                 ${sourcePill}
+                ${devicePill}
                 ${subpageOpenButton ? `<div class="tooltip-actions">${subpageOpenButton}</div>` : ""}
                 ${pathLine}
                 <div class="tooltip-context">context: ${context}</div>

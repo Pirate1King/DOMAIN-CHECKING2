@@ -88,6 +88,14 @@ EVENT_ATTR_KEYS = {
 URL_REGEX = re.compile(r"https?://[^\s'\"<>]+", re.IGNORECASE)
 QUOTED_RELATIVE_URL_REGEX = re.compile(r"""['"]((?:https?:)?//[^'"\s<>]+|/[^'"\s<>]+)['"]""", re.IGNORECASE)
 CONTROL_CHAR_RE = re.compile(r"[\x00-\x1f\x7f]")
+MOBILE_HINT_RE = re.compile(
+    r"(^|[^a-z0-9])(mobile|mobi|sp|sm-only|only-mobile|on-mobile|for-mobile|m-cta|cta-m)($|[^a-z0-9])",
+    re.IGNORECASE,
+)
+DESKTOP_HINT_RE = re.compile(
+    r"(^|[^a-z0-9])(desktop|pc|only-desktop|on-desktop|for-desktop|d-cta|cta-d|lg-only|xl-only)($|[^a-z0-9])",
+    re.IGNORECASE,
+)
 STATIC_EXTENSIONS = (
     ".css",
     ".js",
@@ -1210,6 +1218,26 @@ def is_different_domain_redirect(original_url, final_url):
     return src != dst
 
 
+def detect_device_hint(link):
+    parts = [
+        str(link.get("context") or ""),
+        str(link.get("href") or ""),
+        str(link.get("source_url") or ""),
+        str(link.get("wrapped_from") or ""),
+        str(link.get("subpage_from") or ""),
+    ]
+    text = " ".join(parts).lower()
+    has_mobile = bool(MOBILE_HINT_RE.search(text))
+    has_desktop = bool(DESKTOP_HINT_RE.search(text))
+    if has_mobile and has_desktop:
+        return "mobile+desktop"
+    if has_mobile:
+        return "mobile"
+    if has_desktop:
+        return "desktop"
+    return ""
+
+
 def read_domains(path):
     with open(path, newline="", encoding="utf-8") as handle:
         rows = list(csv.reader(handle))
@@ -1308,6 +1336,7 @@ def process_domain(domain, out_header, ignore_https_redirect=False, scan_subpage
     analyzed_cache = analyze_tracking_links_parallel(tracking_links)
 
     for link in tracking_links:
+        device_hint = detect_device_hint(link)
         cached = analyzed_cache.get(link["url"])
         if cached is None:
             cached = analyze_tracking_link(link["url"])
@@ -1325,6 +1354,7 @@ def process_domain(domain, out_header, ignore_https_redirect=False, scan_subpage
                     "wrapped_from": link.get("wrapped_from", ""),
                     "subpage_from": link.get("subpage_from", ""),
                     "source_type": link.get("source_type", "direct"),
+                    "device_hint": device_hint,
                 }
             )
             continue
@@ -1345,6 +1375,7 @@ def process_domain(domain, out_header, ignore_https_redirect=False, scan_subpage
                         "subpage_from": link.get("subpage_from", ""),
                         "source_type": link.get("source_type", "direct"),
                         "error_type": "",
+                        "device_hint": device_hint,
                     }
                 )
                 continue
@@ -1360,6 +1391,7 @@ def process_domain(domain, out_header, ignore_https_redirect=False, scan_subpage
                     "subpage_from": link.get("subpage_from", ""),
                     "source_type": link.get("source_type", "direct"),
                     "error_type": "missing_https",
+                    "device_hint": device_hint,
                 }
             )
             continue
@@ -1377,6 +1409,7 @@ def process_domain(domain, out_header, ignore_https_redirect=False, scan_subpage
                     "subpage_from": link.get("subpage_from", ""),
                     "source_type": link.get("source_type", "direct"),
                     "error_type": "domain_redirect",
+                    "device_hint": device_hint,
                 }
             )
         else:
@@ -1392,6 +1425,7 @@ def process_domain(domain, out_header, ignore_https_redirect=False, scan_subpage
                     "subpage_from": link.get("subpage_from", ""),
                     "source_type": link.get("source_type", "direct"),
                     "error_type": "",
+                    "device_hint": device_hint,
                 }
             )
 
