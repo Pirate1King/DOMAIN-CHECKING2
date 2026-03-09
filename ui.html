@@ -265,6 +265,10 @@
         cursor: pointer;
       }
       .subpage-scan-btn {
+        position: relative;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
         padding: 4px 8px;
         border-radius: 6px;
         border: 1px solid #1b5a3e;
@@ -280,6 +284,24 @@
       }
       .subpage-scan-btn:disabled {
         opacity: 0.55;
+      }
+      .subpage-scan-btn.is-loading {
+        border-color: #28c27e;
+        color: #d8ffe9;
+      }
+      .subpage-scan-btn.is-loading::after {
+        content: "";
+        width: 10px;
+        height: 10px;
+        border: 2px solid rgba(155, 231, 195, 0.35);
+        border-top-color: #9be7c3;
+        border-radius: 50%;
+        animation: subscan-spin 0.75s linear infinite;
+      }
+      @keyframes subscan-spin {
+        to {
+          transform: rotate(360deg);
+        }
       }
       .webhook-input {
         min-width: 320px;
@@ -633,6 +655,7 @@
       let activeDetailCell = null;
       let activeDetailRow = null;
       let subscanRunningRows = new Set();
+      let subscanCompletedRows = new Set();
 
       function setStatus(text) {
         statusEl.textContent = text;
@@ -642,13 +665,14 @@
         const prevWrap = resultsEl.querySelector(".table-wrap");
         const prevScrollTop = prevWrap ? prevWrap.scrollTop : 0;
         const prevScrollLeft = prevWrap ? prevWrap.scrollLeft : 0;
+        const visibleHeader = (header || []).filter((col) => col !== "page_final_url");
 
         if (!rows.length) {
           resultsEl.innerHTML = "<div class='hint'>No results.</div>";
           return;
         }
         let html = "<div class='table-wrap'><table><thead><tr>";
-        for (const col of header) {
+        for (const col of visibleHeader) {
           html += `<th>${col}</th>`;
         }
         html += "<th>subpage</th>";
@@ -676,6 +700,7 @@
           }
           html += "<tr>";
           row.forEach((cell, idx) => {
+            if (header[idx] === "page_final_url") return;
             let value = cell === null || cell === undefined ? "" : String(cell);
             if (header[idx] === "tracking_ok") {
               const num = Number(value);
@@ -704,7 +729,11 @@
             }
           });
           const running = subscanRunningRows.has(sourceRowIdx);
-          html += `<td><button class="subpage-scan-btn" data-subscan-row="${sourceRowIdx}" ${running ? "disabled" : ""}>scan subpage</button></td>`;
+          const completed = subscanCompletedRows.has(sourceRowIdx);
+          const loadingClass = running ? " is-loading" : "";
+          const buttonText = running ? "scanning..." : completed ? "scanned" : "scan subpage";
+          const disabledAttr = running || completed ? "disabled" : "";
+          html += `<td><button class="subpage-scan-btn${loadingClass}" data-subscan-row="${sourceRowIdx}" ${disabledAttr}>${buttonText}</button></td>`;
           html += "</tr>";
         });
         html += "</tbody></table></div>";
@@ -968,6 +997,8 @@
         progressBar.style.width = "0%";
         progressText.textContent = `Processed 0/${domains.length}`;
         resultsEl.innerHTML = "";
+        subscanRunningRows = new Set();
+        subscanCompletedRows = new Set();
         try {
           const resp = await fetch(`${API_BASE}/run`, {
             method: "POST",
@@ -1201,11 +1232,8 @@
         const rows = lastData.rows || [];
         const domainIdx = header.indexOf("domain");
         const domain = domainIdx >= 0 && rows[rowIdx] ? rows[rowIdx][domainIdx] : "";
-        const pageFinalIdx = header.indexOf("page_final_url");
         const pageUrlIdx = header.indexOf("page_url");
-        const pageUrlForLocate =
-          (pageFinalIdx >= 0 && rows[rowIdx] ? rows[rowIdx][pageFinalIdx] : "") ||
-          (pageUrlIdx >= 0 && rows[rowIdx] ? rows[rowIdx][pageUrlIdx] : "");
+        const pageUrlForLocate = pageUrlIdx >= 0 && rows[rowIdx] ? rows[rowIdx][pageUrlIdx] : "";
         const subtitle = `Row ${rowIdx + 1}${domain ? ` • ${domain}` : ""}`;
         showTooltip(cell, title, subtitle, list, pageUrlForLocate);
       });
@@ -1315,6 +1343,7 @@
           if ((doneData.details || []).length) {
             lastData.details[rowIdx] = doneData.details[0];
           }
+          subscanCompletedRows.add(rowIdx);
           renderTable(lastData.header, lastData.rows);
           summaryBox.innerHTML = renderSummaryBox(lastData.header, lastData.rows, lastData.details || []);
           setStatus(`subpage scan done: ${domain}`);

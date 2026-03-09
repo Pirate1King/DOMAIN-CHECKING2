@@ -563,15 +563,7 @@ def extract_tracking_links(html_bytes, base_url, scan_subpages=False, scan_wrapp
         source_type="direct",
         subpage_from="",
     )
-    seen = set(
-        (
-            str(item.get("url") or "").strip().lower(),
-            int(item.get("node_id") or 0),
-            str(item.get("context") or "").strip().lower(),
-            str(item.get("href") or "").strip().lower(),
-        )
-        for item in links
-    )
+    seen = {tracking_identity_key(item) for item in links}
     try:
         html_text = html_bytes.decode("utf-8", errors="ignore")
     except Exception:
@@ -586,11 +578,17 @@ def extract_tracking_links(html_bytes, base_url, scan_subpages=False, scan_wrapp
             href_for_entry = wrapped_item.get("href", "")
             source_url_for_entry = wrapped_item.get("source_url", "")
             node_for_entry = int(wrapped_item.get("node_id") or 0)
-            key = (
-                found.lower(),
-                node_for_entry,
-                (context_for_entry or "").strip().lower(),
-                (href_for_entry or "").strip().lower(),
+            key = tracking_identity_key(
+                {
+                    "url": found,
+                    "node_id": node_for_entry,
+                    "context": context_for_entry,
+                    "href": href_for_entry,
+                    "source_url": source_url_for_entry,
+                    "wrapped_from": "",
+                    "subpage_from": subpage_from,
+                    "source_type": via_type or "subpage_direct",
+                }
             )
             if key in seen:
                 continue
@@ -617,11 +615,17 @@ def extract_tracking_links(html_bytes, base_url, scan_subpages=False, scan_wrapp
             href_for_entry = wrapped_item.get("href", "")
             source_url_for_entry = wrapped_item.get("source_url", "")
             node_for_entry = int(wrapped_item.get("node_id") or 0)
-            key = (
-                found.lower(),
-                node_for_entry,
-                (context_for_entry or "").strip().lower(),
-                (href_for_entry or "").strip().lower(),
+            key = tracking_identity_key(
+                {
+                    "url": found,
+                    "node_id": node_for_entry,
+                    "context": context_for_entry,
+                    "href": href_for_entry,
+                    "source_url": source_url_for_entry,
+                    "wrapped_from": wrapped_from,
+                    "subpage_from": "",
+                    "source_type": via_type or "wrapped_redirect",
+                }
             )
             if key in seen:
                 continue
@@ -645,20 +649,25 @@ def dedupe_tracking_links(links):
     out = []
     seen = set()
     for item in links or []:
-        key = (
-            str(item.get("url") or "").strip().lower(),
-            str(item.get("context") or "").strip().lower(),
-            str(item.get("href") or "").strip().lower(),
-            str(item.get("source_url") or "").strip().lower(),
-            str(item.get("wrapped_from") or "").strip().lower(),
-            str(item.get("subpage_from") or "").strip().lower(),
-            str(item.get("source_type") or "").strip().lower(),
-        )
+        key = tracking_identity_key(item)
         if key in seen:
             continue
         seen.add(key)
         out.append(item)
     return out
+
+
+def tracking_identity_key(item):
+    return (
+        str(item.get("url") or "").strip().lower(),
+        int(item.get("node_id") or 0),
+        str(item.get("context") or "").strip().lower(),
+        str(item.get("href") or "").strip().lower(),
+        str(item.get("source_url") or "").strip().lower(),
+        str(item.get("wrapped_from") or "").strip().lower(),
+        str(item.get("subpage_from") or "").strip().lower(),
+        str(item.get("source_type") or "").strip().lower(),
+    )
 
 
 def extract_url_candidates(raw, base_url):
@@ -1208,7 +1217,6 @@ def build_output_header(header):
     new_cols = [
         "page_url",
         "page_status",
-        "page_final_url",
         "tracking_total",
         "tracking_ok",
         "tracking_error",
@@ -1347,7 +1355,6 @@ def process_domain(domain, out_header, ignore_https_redirect=False, scan_subpage
 
     set_col("page_url", page_url)
     set_col("page_status", page_status)
-    set_col("page_final_url", page_final)
     set_col("tracking_total", tracking_total)
     set_col("tracking_ok", tracking_ok)
     set_col("tracking_error", tracking_error)
