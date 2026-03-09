@@ -1260,13 +1260,45 @@ def detect_device_hint(link):
     text = " ".join(parts).lower()
     has_mobile = bool(MOBILE_HINT_RE.search(text))
     has_desktop = bool(DESKTOP_HINT_RE.search(text))
-    if has_mobile and has_desktop:
-        return "mobile+desktop"
-    if has_mobile:
+    if has_mobile and not has_desktop:
         return "mobile"
-    if has_desktop:
-        return "desktop"
     return ""
+
+
+def extract_context_text(context):
+    match = re.search(r"(?:^|;\s*)text=([^;]+)", str(context or ""), re.IGNORECASE)
+    if not match:
+        return ""
+    return match.group(1).strip().lower()
+
+
+def tracking_variant_group_key(link):
+    return (
+        str(link.get("url") or "").strip().lower(),
+        extract_context_text(link.get("context", "")),
+        str(link.get("source_type") or "").strip().lower(),
+        str(link.get("wrapped_from") or "").strip().lower(),
+        str(link.get("subpage_from") or "").strip().lower(),
+    )
+
+
+def assign_ui_variant_hints(tracking_links):
+    grouped = {}
+    hints = {}
+    for link in tracking_links or []:
+        key = tracking_identity_key(link)
+        grouped.setdefault(tracking_variant_group_key(link), []).append((key, link))
+
+    for items in grouped.values():
+        if len(items) != 2:
+            continue
+        mobile_keys = [key for key, link in items if detect_device_hint(link) == "mobile"]
+        if len(mobile_keys) == 1:
+            hints[mobile_keys[0]] = "mobile"
+            continue
+        for key, _link in items:
+            hints[key] = "responsive"
+    return hints
 
 
 def read_domains(path):
@@ -1365,9 +1397,10 @@ def process_domain(domain, out_header, ignore_https_redirect=False, scan_subpage
     bad_links = []
     ok_links = []
     analyzed_cache = analyze_tracking_links_parallel(tracking_links)
+    variant_hints = assign_ui_variant_hints(tracking_links)
 
     for link in tracking_links:
-        device_hint = detect_device_hint(link)
+        variant_hint = variant_hints.get(tracking_identity_key(link), "")
         cached = analyzed_cache.get(link["url"])
         if cached is None:
             cached = analyze_tracking_link(link["url"])
@@ -1385,7 +1418,7 @@ def process_domain(domain, out_header, ignore_https_redirect=False, scan_subpage
                     "wrapped_from": link.get("wrapped_from", ""),
                     "subpage_from": link.get("subpage_from", ""),
                     "source_type": link.get("source_type", "direct"),
-                    "device_hint": device_hint,
+                    "device_hint": variant_hint,
                 }
             )
             continue
@@ -1406,7 +1439,7 @@ def process_domain(domain, out_header, ignore_https_redirect=False, scan_subpage
                         "subpage_from": link.get("subpage_from", ""),
                         "source_type": link.get("source_type", "direct"),
                         "error_type": "",
-                        "device_hint": device_hint,
+                        "device_hint": variant_hint,
                     }
                 )
                 continue
@@ -1422,7 +1455,7 @@ def process_domain(domain, out_header, ignore_https_redirect=False, scan_subpage
                     "subpage_from": link.get("subpage_from", ""),
                     "source_type": link.get("source_type", "direct"),
                     "error_type": "missing_https",
-                    "device_hint": device_hint,
+                    "device_hint": variant_hint,
                 }
             )
             continue
@@ -1440,7 +1473,7 @@ def process_domain(domain, out_header, ignore_https_redirect=False, scan_subpage
                     "subpage_from": link.get("subpage_from", ""),
                     "source_type": link.get("source_type", "direct"),
                     "error_type": "domain_redirect",
-                    "device_hint": device_hint,
+                    "device_hint": variant_hint,
                 }
             )
         else:
@@ -1456,7 +1489,7 @@ def process_domain(domain, out_header, ignore_https_redirect=False, scan_subpage
                     "subpage_from": link.get("subpage_from", ""),
                     "source_type": link.get("source_type", "direct"),
                     "error_type": "",
-                    "device_hint": device_hint,
+                    "device_hint": variant_hint,
                 }
             )
 

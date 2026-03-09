@@ -468,6 +468,11 @@
         background: rgba(247, 236, 154, 0.12);
         border: 1px solid rgba(247, 236, 154, 0.35);
       }
+      .tooltip-pill.device-responsive {
+        color: #d8d6a8;
+        background: rgba(216, 214, 168, 0.12);
+        border: 1px solid rgba(216, 214, 168, 0.35);
+      }
       .tooltip-path {
         color: var(--ink);
         font-size: 11px;
@@ -1153,8 +1158,10 @@
               : `<div class="tooltip-pill direct">nguồn: trang chủ</div>`;
             const deviceHint = String(item.device_hint || "").toLowerCase();
             let devicePill = "";
-            if (deviceHint === "mobile" || deviceHint === "mobile+desktop") {
+            if (deviceHint === "mobile") {
               devicePill = `<div class="tooltip-pill device device-mobile">thiết bị: mobile</div>`;
+            } else if (deviceHint === "responsive") {
+              devicePill = `<div class="tooltip-pill device device-responsive">biến thể: responsive</div>`;
             }
             const pathLine = wrappedFrom
               ? `<div class="path-grid">
