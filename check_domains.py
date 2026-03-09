@@ -11,7 +11,7 @@ import time
 from html.parser import HTMLParser
 from urllib.error import HTTPError, URLError
 from urllib.parse import parse_qsl, quote, unquote, urljoin, urlparse, urlsplit, urlunsplit
-from urllib.request import Request, build_opener, HTTPRedirectHandler, urlopen
+from urllib.request import Request, build_opener, HTTPRedirectHandler, ProxyHandler, urlopen
 
 
 TRACKING_TOKEN = "a=mswl"
@@ -281,8 +281,15 @@ class NoRedirect(HTTPRedirectHandler):
         return None
 
 
-def _open_url(url, allow_redirects=True, timeout_secs=TIMEOUT_SECS):
-    handlers = []
+def _proxy_handler(proxy_url=""):
+    proxy = str(proxy_url or "").strip()
+    if not proxy:
+        return ProxyHandler({})
+    return ProxyHandler({"http": proxy, "https": proxy})
+
+
+def _open_url(url, allow_redirects=True, timeout_secs=TIMEOUT_SECS, proxy_url=""):
+    handlers = [_proxy_handler(proxy_url)]
     if not allow_redirects:
         handlers.append(NoRedirect())
     opener = build_opener(*handlers)
@@ -347,7 +354,7 @@ def parse_location_from_headers(header_text):
     return ""
 
 
-def fetch_url_via_curl(url, allow_redirects=True, timeout_secs=TIMEOUT_SECS, resolved_ip=None):
+def fetch_url_via_curl(url, allow_redirects=True, timeout_secs=TIMEOUT_SECS, resolved_ip=None, proxy_url=""):
     parsed = urlparse(url)
     host = (parsed.hostname or "").strip()
     if not host:
@@ -384,6 +391,9 @@ def fetch_url_via_curl(url, allow_redirects=True, timeout_secs=TIMEOUT_SECS, res
                 "-w",
                 "%{http_code}\n%{url_effective}",
             ]
+            proxy = str(proxy_url or "").strip()
+            if proxy:
+                cmd.extend(["-x", proxy])
             if ip:
                 cmd.extend(["--resolve", f"{host}:{port}:{ip}"])
             if allow_redirects:
@@ -433,7 +443,7 @@ def fetch_url_via_curl(url, allow_redirects=True, timeout_secs=TIMEOUT_SECS, res
     return None
 
 
-def fetch_url_via_curl_resolve(url, allow_redirects=True, timeout_secs=TIMEOUT_SECS):
+def fetch_url_via_curl_resolve(url, allow_redirects=True, timeout_secs=TIMEOUT_SECS, proxy_url=""):
     parsed = urlparse(url)
     host = (parsed.hostname or "").strip()
     if not host:
@@ -443,7 +453,13 @@ def fetch_url_via_curl_resolve(url, allow_redirects=True, timeout_secs=TIMEOUT_S
         return None
     last_failure = None
     for ip in resolved_ips:
-        result = fetch_url_via_curl(url, allow_redirects=allow_redirects, timeout_secs=timeout_secs, resolved_ip=ip)
+        result = fetch_url_via_curl(
+            url,
+            allow_redirects=allow_redirects,
+            timeout_secs=timeout_secs,
+            resolved_ip=ip,
+            proxy_url=proxy_url,
+        )
         if result is None:
             continue
         if result.get("status"):
@@ -452,9 +468,9 @@ def fetch_url_via_curl_resolve(url, allow_redirects=True, timeout_secs=TIMEOUT_S
     return last_failure
 
 
-def fetch_url(url, allow_redirects=True, timeout_secs=TIMEOUT_SECS):
+def fetch_url(url, allow_redirects=True, timeout_secs=TIMEOUT_SECS, proxy_url=""):
     try:
-        resp = _open_url(url, allow_redirects=allow_redirects, timeout_secs=timeout_secs)
+        resp = _open_url(url, allow_redirects=allow_redirects, timeout_secs=timeout_secs, proxy_url=proxy_url)
         status = resp.getcode()
         final_url = resp.geturl()
         body = resp.read()
@@ -478,13 +494,23 @@ def fetch_url(url, allow_redirects=True, timeout_secs=TIMEOUT_SECS):
             "location": exc.headers.get("Location", ""),
         }
         if exc.code in (403, 429):
-            fallback = fetch_url_via_curl(url, allow_redirects=allow_redirects, timeout_secs=timeout_secs)
+            fallback = fetch_url_via_curl(
+                url,
+                allow_redirects=allow_redirects,
+                timeout_secs=timeout_secs,
+                proxy_url=proxy_url,
+            )
             if fallback is not None and int(fallback.get("status") or 0) > int(response["status"] or 0):
                 return fallback
         return response
     except (URLError, socket.timeout, ValueError) as exc:
         if is_dns_error(exc):
-            fallback = fetch_url_via_curl_resolve(url, allow_redirects=allow_redirects, timeout_secs=timeout_secs)
+            fallback = fetch_url_via_curl_resolve(
+                url,
+                allow_redirects=allow_redirects,
+                timeout_secs=timeout_secs,
+                proxy_url=proxy_url,
+            )
             if fallback is not None:
                 return fallback
         return {
@@ -502,11 +528,11 @@ def pick_homepage(domain):
     return [f"https://{domain}", f"http://{domain}"]
 
 
-def fetch_homepage(domain):
+def fetch_homepage(domain, proxy_url=""):
     candidates = []
     last_error = ""
     for candidate in pick_homepage(domain):
-        result = fetch_url(candidate, allow_redirects=True)
+        result = fetch_url(candidate, allow_redirects=True, proxy_url=proxy_url)
         result["page_url"] = candidate
         candidates.append(result)
         if result.get("error"):
@@ -561,13 +587,13 @@ def should_retry_page_status(status):
     return False
 
 
-def fetch_homepage_with_retry(domain):
-    first = fetch_homepage(domain)
+def fetch_homepage_with_retry(domain, proxy_url=""):
+    first = fetch_homepage(domain, proxy_url=proxy_url)
     if not should_retry_page_status(first["status"]):
         return first
     # Retry once for unstable/borderline status to reduce false alarms.
     time.sleep(PAGE_RETRY_DELAY_SECS)
-    second = fetch_homepage(domain)
+    second = fetch_homepage(domain, proxy_url=proxy_url)
     best = choose_best_page_result([first, second])
     return best or second
 
@@ -614,7 +640,7 @@ def extract_direct_tracking_links_from_html(html_bytes, base_url, source_type="d
     return links
 
 
-def extract_tracking_links(html_bytes, base_url, scan_subpages=False, scan_wrapped=True):
+def extract_tracking_links(html_bytes, base_url, scan_subpages=False, scan_wrapped=True, proxy_url=""):
     links = extract_direct_tracking_links_from_html(
         html_bytes,
         base_url,
@@ -627,7 +653,7 @@ def extract_tracking_links(html_bytes, base_url, scan_subpages=False, scan_wrapp
     except Exception:
         html_text = ""
     if scan_subpages:
-        subpage_candidates = build_probe_candidates(html_text, base_url, mode="subpage")
+        subpage_candidates = build_probe_candidates(html_text, base_url, mode="subpage", proxy_url=proxy_url)
         for wrapped_item in probe_candidates(subpage_candidates, mode="subpage"):
             found = wrapped_item.get("url", "")
             via_type = wrapped_item.get("via_type", "")
@@ -667,7 +693,7 @@ def extract_tracking_links(html_bytes, base_url, scan_subpages=False, scan_wrapp
                 }
             )
     elif scan_wrapped:
-        wrapper_candidates = build_probe_candidates(html_text, base_url, mode="wrapped")
+        wrapper_candidates = build_probe_candidates(html_text, base_url, mode="wrapped", proxy_url=proxy_url)
         for wrapped_item in probe_candidates(wrapper_candidates, mode="wrapped"):
             found = wrapped_item.get("url", "")
             via_type = wrapped_item.get("via_type", "")
@@ -908,7 +934,7 @@ def is_same_host(base_url, candidate_url):
     return bool(src and dst and src == dst)
 
 
-def build_probe_candidates(html_text, base_url, mode="wrapped"):
+def build_probe_candidates(html_text, base_url, mode="wrapped", proxy_url=""):
     parser = HrefCollector()
     parser.feed(html_text or "")
     candidates = []
@@ -941,6 +967,7 @@ def build_probe_candidates(html_text, base_url, mode="wrapped"):
                         "href": href,
                         "source_url": normalize_candidate_url(href, base_url),
                         "device_context": item.get("device_context", ""),
+                        "proxy_url": proxy_url,
                         "score": score,
                     }
                 )
@@ -950,9 +977,15 @@ def build_probe_candidates(html_text, base_url, mode="wrapped"):
 
 def discover_wrapped_tracking_links(candidate):
     url = candidate.get("url", "")
+    proxy_url = candidate.get("proxy_url", "")
     if not url:
         return []
-    no_redirect = fetch_url(url, allow_redirects=False, timeout_secs=WRAPPER_TIMEOUT_SECS)
+    no_redirect = fetch_url(
+        url,
+        allow_redirects=False,
+        timeout_secs=WRAPPER_TIMEOUT_SECS,
+        proxy_url=proxy_url,
+    )
     status = int(no_redirect.get("status") or 0)
     if status not in (301, 302, 303, 307, 308):
         return []
@@ -979,9 +1012,15 @@ def discover_wrapped_tracking_links(candidate):
 
 def discover_subpage_tracking_links(candidate):
     url = candidate.get("url", "")
+    proxy_url = candidate.get("proxy_url", "")
     if not url:
         return []
-    followed = fetch_url(url, allow_redirects=True, timeout_secs=WRAPPER_TIMEOUT_SECS)
+    followed = fetch_url(
+        url,
+        allow_redirects=True,
+        timeout_secs=WRAPPER_TIMEOUT_SECS,
+        proxy_url=proxy_url,
+    )
     body = followed.get("body") or b""
     final_url = (followed.get("final_url") or url).strip()
     source_url = candidate.get("source_url", "") or url
@@ -1132,11 +1171,11 @@ def sanitize_http_url(url):
     return clean
 
 
-def follow_redirects(url):
+def follow_redirects(url, proxy_url=""):
     current = url
     chain = []
     for _ in range(MAX_REDIRECTS):
-        result = fetch_url(current, allow_redirects=False)
+        result = fetch_url(current, allow_redirects=False, proxy_url=proxy_url)
         status = result["status"]
         location = result["location"]
         if status in (301, 302, 303, 307, 308) and location:
@@ -1154,12 +1193,12 @@ def follow_redirects(url):
     }, current, chain
 
 
-def check_tracking_link(url):
-    initial = fetch_url(url, allow_redirects=False)
+def check_tracking_link(url, proxy_url=""):
+    initial = fetch_url(url, allow_redirects=False, proxy_url=proxy_url)
     status = initial["status"]
     location = initial["location"]
     if status in (301, 302, 303, 307, 308) and location:
-        final_result, final_url = follow_redirects(url)
+        final_result, final_url, _chain = follow_redirects(url, proxy_url=proxy_url)
         final_status = final_result["status"]
         return False, f"{status}-> {final_status}", final_url
     if status == 0:
@@ -1169,12 +1208,12 @@ def check_tracking_link(url):
     return True, str(status), url
 
 
-def analyze_tracking_link(url):
-    initial = fetch_url(url, allow_redirects=False)
+def analyze_tracking_link(url, proxy_url=""):
+    initial = fetch_url(url, allow_redirects=False, proxy_url=proxy_url)
     initial_status = initial["status"]
     location = initial["location"]
     if initial_status in (301, 302, 303, 307, 308) and location:
-        final_result, final_url, chain = follow_redirects(url)
+        final_result, final_url, chain = follow_redirects(url, proxy_url=proxy_url)
         return {
             "is_redirect": True,
             "initial_status": initial_status,
@@ -1371,8 +1410,8 @@ def build_output_header(header):
     return out_header
 
 
-def process_domain(domain, out_header, ignore_https_redirect=False, scan_subpages=False, scan_wrapped=True):
-    page = fetch_homepage_with_retry(domain)
+def process_domain(domain, out_header, ignore_https_redirect=False, scan_subpages=False, scan_wrapped=True, proxy_url=""):
+    page = fetch_homepage_with_retry(domain, proxy_url=proxy_url)
     page_status = page["status"]
     page_url = page.get("page_url", "")
     page_final = page.get("final_url", "")
@@ -1388,6 +1427,7 @@ def process_domain(domain, out_header, ignore_https_redirect=False, scan_subpage
             page_final or page_url,
             scan_subpages=scan_subpages,
             scan_wrapped=wrapped_enabled,
+            proxy_url=proxy_url,
         )
         tracking_links = dedupe_tracking_links(tracking_links)
 
@@ -1396,14 +1436,14 @@ def process_domain(domain, out_header, ignore_https_redirect=False, scan_subpage
     tracking_error = 0
     bad_links = []
     ok_links = []
-    analyzed_cache = analyze_tracking_links_parallel(tracking_links)
+    analyzed_cache = analyze_tracking_links_parallel(tracking_links, proxy_url=proxy_url)
     variant_hints = assign_ui_variant_hints(tracking_links)
 
     for link in tracking_links:
         variant_hint = variant_hints.get(tracking_identity_key(link), "")
         cached = analyzed_cache.get(link["url"])
         if cached is None:
-            cached = analyze_tracking_link(link["url"])
+            cached = analyze_tracking_link(link["url"], proxy_url=proxy_url)
             analyzed_cache[link["url"]] = cached
         result = dict(cached)
         if not result["is_redirect"]:
@@ -1521,7 +1561,7 @@ def process_domain(domain, out_header, ignore_https_redirect=False, scan_subpage
     return out_row, detail
 
 
-def analyze_tracking_links_parallel(tracking_links):
+def analyze_tracking_links_parallel(tracking_links, proxy_url=""):
     urls = []
     seen = set()
     for link in tracking_links or []:
@@ -1534,12 +1574,12 @@ def analyze_tracking_links_parallel(tracking_links):
         return {}
     if len(urls) == 1:
         url = urls[0]
-        return {url: analyze_tracking_link(url)}
+        return {url: analyze_tracking_link(url, proxy_url=proxy_url)}
 
     out = {}
     worker_count = min(ANALYZE_WORKERS, len(urls))
     with ThreadPoolExecutor(max_workers=worker_count) as executor:
-        future_map = {executor.submit(analyze_tracking_link, url): url for url in urls}
+        future_map = {executor.submit(analyze_tracking_link, url, proxy_url): url for url in urls}
         for future in as_completed(future_map):
             url = future_map[future]
             try:
@@ -1555,7 +1595,7 @@ def analyze_tracking_links_parallel(tracking_links):
     return out
 
 
-def check_domains(domains):
+def check_domains(domains, proxy_url=""):
     header = ["domain"]
     out_header = build_output_header(header)
     out_rows = []
@@ -1564,7 +1604,7 @@ def check_domains(domains):
     for domain in domains:
         if not domain:
             continue
-        out_row, detail = process_domain(domain, out_header)
+        out_row, detail = process_domain(domain, out_header, proxy_url=proxy_url)
         out_rows.append(out_row)
         details.append(detail)
 

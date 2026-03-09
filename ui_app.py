@@ -6,6 +6,7 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
+from urllib.parse import urlparse
 from urllib.error import URLError
 from urllib.request import Request, urlopen
 
@@ -63,6 +64,11 @@ class Handler(BaseHTTPRequestHandler):
         ignore_https_redirect = True
         scan_subpages = bool(payload.get("scan_subpages", False))
         scan_wrapped = bool(payload.get("scan_wrapped", False))
+        try:
+            proxy_url = normalize_proxy_payload(payload)
+        except ValueError as exc:
+            self._send(400, str(exc), "text/plain; charset=utf-8")
+            return
         if scan_subpages:
             scan_wrapped = False
         job_id = start_job(
@@ -70,6 +76,7 @@ class Handler(BaseHTTPRequestHandler):
             ignore_https_redirect=ignore_https_redirect,
             scan_subpages=scan_subpages,
             scan_wrapped=scan_wrapped,
+            proxy_url=proxy_url,
         )
         body = json.dumps({"job_id": job_id})
         self._send(200, body, "application/json; charset=utf-8")
@@ -170,7 +177,24 @@ def extract_domains(raw_domains):
     return found
 
 
-def start_job(domains, ignore_https_redirect=False, scan_subpages=False, scan_wrapped=False):
+def normalize_proxy_payload(payload):
+    mode = str(payload.get("proxy_mode", "direct") or "direct").strip().lower()
+    raw_proxy = str(payload.get("proxy_url", "") or "").strip()
+    if mode in ("", "direct"):
+        return ""
+    if mode != "custom":
+        raise ValueError("Invalid proxy mode")
+    if not raw_proxy:
+        raise ValueError("Missing custom proxy URL")
+    parsed = urlparse(raw_proxy)
+    if parsed.scheme not in ("http", "https"):
+        raise ValueError("Proxy URL must start with http:// or https://")
+    if not parsed.netloc:
+        raise ValueError("Invalid proxy URL")
+    return raw_proxy
+
+
+def start_job(domains, ignore_https_redirect=False, scan_subpages=False, scan_wrapped=False, proxy_url=""):
     job_id = uuid.uuid4().hex
     header = build_output_header(["domain"])
     with JOBS_LOCK:
@@ -188,18 +212,19 @@ def start_job(domains, ignore_https_redirect=False, scan_subpages=False, scan_wr
             "ignore_https_redirect": ignore_https_redirect,
             "scan_subpages": scan_subpages,
             "scan_wrapped": scan_wrapped,
+            "proxy_url": proxy_url,
         }
 
     thread = threading.Thread(
         target=run_job,
-        args=(job_id, domains, ignore_https_redirect, scan_subpages, scan_wrapped),
+        args=(job_id, domains, ignore_https_redirect, scan_subpages, scan_wrapped, proxy_url),
         daemon=True,
     )
     thread.start()
     return job_id
 
 
-def run_job(job_id, domains, ignore_https_redirect=False, scan_subpages=False, scan_wrapped=False):
+def run_job(job_id, domains, ignore_https_redirect=False, scan_subpages=False, scan_wrapped=False, proxy_url=""):
     header = build_output_header(["domain"])
     try:
         tasks = [(idx, domain) for idx, domain in enumerate(domains) if domain]
@@ -221,6 +246,7 @@ def run_job(job_id, domains, ignore_https_redirect=False, scan_subpages=False, s
                         ignore_https_redirect=ignore_https_redirect,
                         scan_subpages=scan_subpages,
                         scan_wrapped=scan_wrapped,
+                        proxy_url=proxy_url,
                     )
                     future_map[future] = (idx, domain)
                     active_domains.add(domain)
