@@ -96,7 +96,7 @@
         padding: 18px;
         box-shadow: var(--shadow);
         position: relative;
-        overflow: hidden;
+        overflow: visible;
       }
       .panel::before {
         content: "";
@@ -405,25 +405,10 @@
       .path-label {
         font-family: "JetBrains Mono", "Consolas", monospace;
       }
-      .job-toggle-btn.is-paused {
-        background: #07160f;
-        color: var(--ink);
-        border: 1px solid var(--border);
-        box-shadow: none;
-      }
       .results-loader {
         margin: 18px auto 6px;
         width: 28px;
         height: 28px;
-        border-radius: 50%;
-        border: 3px solid rgba(24, 255, 134, 0.18);
-        border-top-color: var(--accent);
-        animation: results-spin 0.8s linear infinite;
-      }
-      .summary-loader {
-        width: 22px;
-        height: 22px;
-        margin: 6px auto;
         border-radius: 50%;
         border: 3px solid rgba(24, 255, 134, 0.18);
         border-top-color: var(--accent);
@@ -442,6 +427,7 @@
         color: var(--muted);
         font-size: 12px;
         position: relative;
+        z-index: 3;
       }
       .help-icon {
         width: 18px;
@@ -463,7 +449,7 @@
         position: absolute;
         left: 0;
         top: calc(100% + 8px);
-        z-index: 7;
+        z-index: 20;
         width: min(560px, calc(100vw - 40px));
         border: 1px solid #1d6a49;
         border-radius: 10px;
@@ -511,19 +497,29 @@
         position: relative;
         display: inline-flex;
         align-items: center;
+        justify-content: center;
         gap: 6px;
-        padding: 4px 8px;
-        border-radius: 6px;
-        border: 1px solid #1b5a3e;
-        background: #07160f;
-        color: #9be7c3;
-        font-size: 11px;
-        text-transform: none;
-        box-shadow: none;
+        min-width: 68px;
+        padding: 6px 10px;
+        border-radius: 8px;
+        border: 1px solid rgba(32, 123, 83, 0.8);
+        background:
+          linear-gradient(180deg, rgba(8, 26, 18, 0.98), rgba(4, 14, 10, 0.98));
+        color: #baffde;
+        font-size: 10px;
+        font-family: "JetBrains Mono", "Consolas", monospace;
+        letter-spacing: 1px;
+        text-transform: uppercase;
+        box-shadow:
+          inset 0 0 0 1px rgba(24, 255, 134, 0.04),
+          0 0 0 1px rgba(0, 0, 0, 0.18);
       }
       .subpage-scan-btn:hover {
         border-color: #28c27e;
-        color: #d8ffe9;
+        color: #ecfff5;
+        box-shadow:
+          inset 0 0 0 1px rgba(24, 255, 134, 0.07),
+          0 0 14px rgba(24, 255, 134, 0.1);
       }
       .subpage-scan-btn:disabled {
         opacity: 0.55;
@@ -531,6 +527,11 @@
       .subpage-scan-btn.is-loading {
         border-color: #28c27e;
         color: #d8ffe9;
+      }
+      .subpage-scan-btn.is-done {
+        color: #7fb79a;
+        border-color: rgba(27, 90, 62, 0.7);
+        background: rgba(6, 19, 13, 0.96);
       }
       .subpage-scan-btn.is-loading::after {
         content: "";
@@ -838,7 +839,6 @@
         <textarea id="domains"></textarea>
         <div class="row">
           <button id="runBtn">Run Check</button>
-          <button id="jobToggleBtn" class="job-toggle-btn" type="button" disabled>Pause</button>
           <label class="toggle">
             <input id="scanWrapped" type="checkbox">
             <span class="toggle-box" aria-hidden="true"></span>
@@ -910,7 +910,6 @@
     <script>
       const API_BASE = "";
       const runBtn = document.getElementById("runBtn");
-      const jobToggleBtn = document.getElementById("jobToggleBtn");
       const scanWrappedEl = document.getElementById("scanWrapped");
       const statusEl = document.getElementById("status");
       const resultsEl = document.getElementById("results");
@@ -933,24 +932,13 @@
       let activeDetailRow = null;
       let subscanRunningRows = new Set();
       let subscanCompletedRows = new Set();
-      let currentJobId = "";
-      let currentJobPaused = false;
-
       function setStatus(text) {
         statusEl.textContent = text;
       }
 
-      function setJobToggleState(enabled, paused) {
-        currentJobPaused = Boolean(paused);
-        if (!jobToggleBtn) return;
-        jobToggleBtn.disabled = !enabled;
-        jobToggleBtn.textContent = paused ? "Resume" : "Pause";
-        jobToggleBtn.classList.toggle("is-paused", Boolean(paused));
-      }
-
       function renderPendingState() {
         resultsEl.innerHTML = "<div class='results-loader' aria-hidden='true'></div>";
-        summaryBox.innerHTML = "<div class='summary-loader' aria-hidden='true'></div>";
+        summaryBox.textContent = "Đang kiểm tra...";
       }
 
       function renderTable(header, rows) {
@@ -1022,10 +1010,10 @@
           });
           const running = subscanRunningRows.has(sourceRowIdx);
           const completed = subscanCompletedRows.has(sourceRowIdx);
-          const loadingClass = running ? " is-loading" : "";
-          const buttonText = running ? "scanning..." : completed ? "scanned" : "scan subpage";
+          const stateClass = running ? " is-loading" : completed ? " is-done" : "";
+          const buttonText = completed ? "done" : "run";
           const disabledAttr = running || completed ? "disabled" : "";
-          html += `<td><button class="subpage-scan-btn${loadingClass}" data-subscan-row="${sourceRowIdx}" ${disabledAttr}>${buttonText}</button></td>`;
+          html += `<td><button class="subpage-scan-btn${stateClass}" data-subscan-row="${sourceRowIdx}" ${disabledAttr}>${buttonText}</button></td>`;
           html += "</tr>";
         });
         html += "</tbody></table></div>";
@@ -1289,7 +1277,6 @@
           return;
         }
         runBtn.disabled = true;
-        setJobToggleState(false, false);
         setStatus("Đang bắt đầu kiểm tra...");
         progressBar.style.width = "0%";
         progressText.textContent = `Đã xử lý 0/${domains.length}`;
@@ -1310,45 +1297,14 @@
             throw new Error(`Lỗi máy chủ ${resp.status}`);
           }
           const data = await resp.json();
-          currentJobId = String(data.job_id || "");
-          setJobToggleState(Boolean(currentJobId), false);
           startPolling(data.job_id);
         } catch (err) {
           setStatus(String(err));
           runBtn.disabled = false;
-          currentJobId = "";
-          setJobToggleState(false, false);
         } finally {
           if (!pollTimer) {
             runBtn.disabled = false;
-            currentJobId = "";
-            setJobToggleState(false, false);
           }
-        }
-      });
-
-      jobToggleBtn.addEventListener("click", async () => {
-        if (!currentJobId) return;
-        const nextAction = currentJobPaused ? "resume" : "pause";
-        jobToggleBtn.disabled = true;
-        try {
-          const resp = await fetch(`${API_BASE}/control`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              job_id: currentJobId,
-              action: nextAction,
-            }),
-          });
-          const data = await resp.json();
-          if (!resp.ok) {
-            throw new Error(data.message || `Lỗi thao tác ${resp.status}`);
-          }
-          setJobToggleState(true, Boolean(data.paused));
-          setStatus(data.paused ? "Đã tạm dừng." : "Đã tiếp tục.");
-        } catch (err) {
-          setStatus(`Thao tác thất bại: ${err}`);
-          setJobToggleState(Boolean(currentJobId), currentJobPaused);
         }
       });
 
@@ -1474,7 +1430,7 @@
         tooltipTitle.textContent = title;
         tooltipSubtitle.textContent = subtitle || "";
         if (!list.length) {
-          tooltipBody.textContent = "Không có dữ liệu chi tiết. Hãy khởi động lại UI server rồi chạy lại.";
+          tooltipBody.textContent = "No detail data. Re-run the scan.";
         } else {
           tooltipBody.innerHTML = list.map((item, idx) => {
             const link = escapeHtml(String(item.link || ""));
@@ -1482,8 +1438,10 @@
             const rawFinal = String(item.final_url || "");
             const finalUrl = highlightDiff(String(item.link || ""), rawFinal);
             const context = escapeHtml(String(item.context || "no_text"));
-            const sourceUrl = escapeHtml(String(item.source_url || item.link || ""));
-            const wrappedFrom = escapeHtml(String(item.wrapped_from || ""));
+            const sourceUrlRaw = String(item.source_url || item.link || "").trim();
+            const wrappedFromRaw = String(item.wrapped_from || "").trim();
+            const sourceUrl = escapeHtml(sourceUrlRaw);
+            const wrappedFrom = escapeHtml(wrappedFromRaw);
             const subpageFromRaw = String(item.subpage_from || "");
             const subpageFrom = escapeHtml(subpageFromRaw);
             const subpageOpenButton = subpageFrom
@@ -1499,12 +1457,13 @@
             } else if (deviceHint === "responsive") {
               devicePill = `<div class="tooltip-pill device device-responsive">variant: responsive</div>`;
             }
+            const sameWrappedSource = wrappedFromRaw && sourceUrlRaw && wrappedFromRaw === sourceUrlRaw;
             const pathLine = wrappedFrom
               ? `<div class="path-grid">
                   <div class="path-row"><div class="path-label">1. tracking link</div><div class="path-value">${link}</div></div>
                   <div class="path-row"><div class="path-label">2. final link</div><div class="path-value">${finalUrl}</div></div>
-                  <div class="path-row"><div class="path-label">ui link</div><div class="path-value">${sourceUrl}</div></div>
-                  <div class="path-row"><div class="path-label">intermediate link</div><div class="path-value">${wrappedFrom}</div></div>
+                  <div class="path-row"><div class="path-label">${sameWrappedSource ? "wrapped link" : "ui link"}</div><div class="path-value">${sourceUrl}</div></div>
+                  ${sameWrappedSource ? "" : `<div class="path-row"><div class="path-label">intermediate link</div><div class="path-value">${wrappedFrom}</div></div>`}
                 </div>`
               : `<div class="path-grid">
                   <div class="path-row"><div class="path-label">1. tracking link</div><div class="path-value">${link}</div></div>
@@ -1597,8 +1556,6 @@
             }
             const data = await resp.json();
             lastData = data;
-            currentJobPaused = Boolean(data.paused);
-            setJobToggleState(!data.done, currentJobPaused);
             if ((data.rows || []).length) {
               renderTable(data.header, data.rows);
               summaryBox.innerHTML = renderSummaryBox(data.header, data.rows, data.details || []);
@@ -1610,8 +1567,6 @@
               clearInterval(pollTimer);
               pollTimer = null;
               runBtn.disabled = false;
-              currentJobId = "";
-              setJobToggleState(false, false);
               return;
             }
             const total = data.total || 0;
@@ -1620,25 +1575,20 @@
             const pct = total ? Math.round((done / total) * 100) : 0;
             progressBar.style.width = `${pct}%`;
             const runningText = started > done ? ` | Đang chạy ${started}/${total}` : "";
-            const pausedText = data.paused ? " | Đã tạm dừng" : "";
             const currentDomainText = data.current_domain ? ` | ${data.current_domain}` : "";
             progressText.textContent = `Đã xử lý ${done}/${total}${runningText}`;
-            setStatus(`Đã xử lý ${done}/${total}${runningText}${pausedText}${currentDomainText}`);
+            setStatus(`Đã xử lý ${done}/${total}${runningText}${currentDomainText}`);
             if (data.done) {
               clearInterval(pollTimer);
               pollTimer = null;
               setStatus(`Hoàn tất. ${data.rows.length} domain.`);
               runBtn.disabled = false;
-              currentJobId = "";
-              setJobToggleState(false, false);
             }
           } catch (err) {
             setStatus(String(err));
             clearInterval(pollTimer);
             pollTimer = null;
             runBtn.disabled = false;
-            currentJobId = "";
-            setJobToggleState(false, false);
           }
         }, 1000);
       }
