@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Kiểm tra domain và tracking</title>
+    <title>Tracking Domain Checker</title>
     <style>
       @import url("https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap");
       :root {
@@ -30,34 +30,89 @@
           var(--bg);
         background-size: 28px 28px, 28px 28px, auto, auto, auto;
         color: var(--ink);
+        position: relative;
+        min-height: 100vh;
+      }
+      body::before {
+        content: "";
+        position: fixed;
+        inset: 0;
+        background:
+          repeating-linear-gradient(180deg, rgba(255, 255, 255, 0.025) 0, rgba(255, 255, 255, 0.025) 1px, transparent 1px, transparent 4px);
+        opacity: 0.18;
+        pointer-events: none;
+        mix-blend-mode: screen;
+      }
+      body::after {
+        content: "";
+        position: fixed;
+        inset: 0;
+        background:
+          radial-gradient(circle at 50% -10%, rgba(24, 255, 134, 0.12), transparent 38%);
+        pointer-events: none;
       }
       .wrap {
         max-width: 1100px;
         margin: 32px auto;
         padding: 0 20px 40px;
+        position: relative;
+        z-index: 1;
       }
       header {
         display: flex;
-        align-items: baseline;
+        align-items: center;
         gap: 16px;
         flex-wrap: wrap;
+        margin-bottom: 8px;
       }
       h1 {
         margin: 0;
         font-size: 28px;
-        letter-spacing: 0.2px;
-        text-transform: none;
+        letter-spacing: 0.8px;
+        text-transform: uppercase;
+        font-family: "JetBrains Mono", "Consolas", monospace;
+        text-shadow: 0 0 18px rgba(24, 255, 134, 0.18);
       }
-      .subtitle {
-        color: var(--muted);
+      header::after {
+        content: "[ live scan console ]";
+        display: inline-flex;
+        align-items: center;
+        padding: 5px 10px;
+        border: 1px solid rgba(42, 134, 94, 0.65);
+        border-radius: 999px;
+        background: rgba(4, 20, 13, 0.92);
+        color: #78d7ad;
+        font-family: "JetBrains Mono", "Consolas", monospace;
+        font-size: 11px;
+        letter-spacing: 0.8px;
+        text-transform: lowercase;
       }
       .panel {
         margin-top: 20px;
-        background: var(--card);
-        border: 1px solid var(--border);
+        background:
+          linear-gradient(180deg, rgba(8, 20, 15, 0.96), rgba(4, 12, 9, 0.96));
+        border: 1px solid rgba(20, 58, 40, 0.9);
         border-radius: 14px;
         padding: 18px;
         box-shadow: var(--shadow);
+        position: relative;
+        overflow: hidden;
+      }
+      .panel::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background:
+          linear-gradient(90deg, rgba(24, 255, 134, 0.08), transparent 18%, transparent 82%, rgba(24, 255, 134, 0.08));
+        pointer-events: none;
+      }
+      .panel::after {
+        content: "";
+        position: absolute;
+        inset: 10px;
+        border: 1px solid rgba(36, 86, 64, 0.32);
+        border-radius: 10px;
+        pointer-events: none;
       }
       textarea {
         width: 100%;
@@ -70,6 +125,14 @@
         color: var(--ink);
         resize: vertical;
         font-family: "JetBrains Mono", "Consolas", monospace;
+        box-shadow: inset 0 0 0 1px rgba(24, 255, 134, 0.04);
+      }
+      textarea:focus {
+        outline: none;
+        border-color: #1f8d5b;
+        box-shadow:
+          inset 0 0 0 1px rgba(24, 255, 134, 0.08),
+          0 0 0 3px rgba(24, 255, 134, 0.08);
       }
       .row {
         display: flex;
@@ -79,25 +142,163 @@
         flex-wrap: wrap;
       }
       .toggle {
+        position: relative;
         display: inline-flex;
         align-items: center;
-        gap: 8px;
-        color: var(--muted);
+        gap: 12px;
+        min-height: 42px;
+        padding: 9px 14px 9px 11px;
+        border: 1px solid rgba(43, 150, 102, 0.55);
+        border-radius: 999px;
+        background:
+          linear-gradient(180deg, rgba(7, 27, 18, 0.98), rgba(3, 14, 10, 0.98)),
+          radial-gradient(circle at left center, rgba(24, 255, 134, 0.08), transparent 42%);
+        color: #b6f4d6;
         font-size: 12px;
+        cursor: pointer;
+        user-select: none;
+        overflow: hidden;
+        box-shadow:
+          inset 0 0 0 1px rgba(24, 255, 134, 0.05),
+          0 0 0 1px rgba(6, 16, 11, 0.45),
+          0 10px 28px rgba(0, 0, 0, 0.18);
+        transition:
+          border-color 0.18s ease,
+          box-shadow 0.18s ease,
+          background 0.18s ease,
+          color 0.18s ease,
+          transform 0.18s ease;
+      }
+      .toggle::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(120deg, transparent 0%, rgba(24, 255, 134, 0.12) 48%, transparent 100%);
+        transform: translateX(-130%);
+        transition: transform 0.3s ease;
+        pointer-events: none;
+      }
+      .toggle:hover {
+        border-color: rgba(38, 211, 130, 0.78);
+        color: #e0fff0;
+        transform: translateY(-1px);
+        box-shadow:
+          inset 0 0 0 1px rgba(24, 255, 134, 0.08),
+          0 0 18px rgba(24, 255, 134, 0.08),
+          0 12px 32px rgba(0, 0, 0, 0.24);
+      }
+      .toggle:hover::before {
+        transform: translateX(0);
       }
       .toggle input {
-        accent-color: var(--accent);
+        position: absolute;
+        inset: 0;
+        opacity: 0;
+        cursor: pointer;
+        margin: 0;
+      }
+      .toggle-box {
+        position: relative;
+        width: 44px;
+        height: 22px;
+        border-radius: 999px;
+        border: 1px solid #245640;
+        background: #020d09;
+        box-shadow:
+          inset 0 0 0 1px rgba(24, 255, 134, 0.05),
+          inset 0 0 14px rgba(7, 29, 18, 0.7);
+        flex: 0 0 44px;
+        transition: border-color 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
+      }
+      .toggle-box::before {
+        content: "";
+        position: absolute;
+        inset: 4px auto 4px 5px;
+        width: 7px;
+        border-radius: 999px;
+        background: rgba(86, 123, 105, 0.45);
+        box-shadow: 0 0 10px rgba(86, 123, 105, 0.18);
+        transition: background 0.18s ease, box-shadow 0.18s ease;
+      }
+      .toggle-box::after {
+        content: "";
+        position: absolute;
+        top: 2px;
+        left: 2px;
+        width: 16px;
+        height: 16px;
+        border-radius: 50%;
+        background: linear-gradient(180deg, #d8e7df, #8ba295);
+        box-shadow: 0 0 10px rgba(183, 201, 191, 0.15);
+        transition: transform 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
+      }
+      .toggle-copy {
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
+        position: relative;
+        z-index: 1;
+      }
+      .toggle-kicker {
+        color: #5c9276;
+        font-family: "JetBrains Mono", "Consolas", monospace;
+        font-size: 9px;
+        letter-spacing: 1.1px;
+        text-transform: uppercase;
+      }
+      .toggle-label {
+        font-family: "JetBrains Mono", "Consolas", monospace;
+        letter-spacing: 0.3px;
+        text-transform: lowercase;
+      }
+      .toggle input:checked + .toggle-box {
+        border-color: #22c97a;
+        background: rgba(24, 255, 134, 0.12);
+        box-shadow:
+          inset 0 0 0 1px rgba(24, 255, 134, 0.08),
+          0 0 14px rgba(24, 255, 134, 0.12);
+      }
+      .toggle input:checked + .toggle-box::before {
+        background: #18ff86;
+        box-shadow: 0 0 12px rgba(24, 255, 134, 0.48);
+      }
+      .toggle input:checked + .toggle-box::after {
+        transform: translateX(22px);
+        background: linear-gradient(180deg, #f0fff6, #18ff86);
+        box-shadow: 0 0 14px rgba(24, 255, 134, 0.35);
+      }
+      .toggle input:checked ~ .toggle-copy .toggle-kicker,
+      .toggle input:checked ~ .toggle-copy .toggle-label {
+        color: #e0fff0;
+      }
+      .toggle input:focus-visible + .toggle-box {
+        outline: 2px solid rgba(24, 255, 134, 0.45);
+        outline-offset: 2px;
       }
       button {
-        background: var(--accent);
+        background:
+          linear-gradient(180deg, #23ff91, #11c46d);
         color: #02160c;
-        border: none;
+        border: 1px solid rgba(112, 255, 187, 0.25);
         padding: 10px 18px;
         border-radius: 10px;
         font-size: 14px;
         cursor: pointer;
-        box-shadow: 0 10px 22px rgba(24, 255, 134, 0.2);
+        box-shadow:
+          inset 0 1px 0 rgba(255, 255, 255, 0.14),
+          0 10px 22px rgba(24, 255, 134, 0.2);
         text-transform: uppercase;
+        letter-spacing: 0.4px;
+        font-family: "JetBrains Mono", "Consolas", monospace;
+        transition: transform 0.18s ease, box-shadow 0.18s ease, filter 0.18s ease;
+      }
+      button:hover:not(:disabled) {
+        transform: translateY(-1px);
+        filter: saturate(1.05);
+        box-shadow:
+          inset 0 1px 0 rgba(255, 255, 255, 0.14),
+          0 0 18px rgba(24, 255, 134, 0.18),
+          0 12px 24px rgba(24, 255, 134, 0.22);
       }
       button:disabled {
         opacity: 0.6;
@@ -106,6 +307,10 @@
       .hint {
         color: var(--muted);
         font-size: 13px;
+      }
+      .panel > * {
+        position: relative;
+        z-index: 1;
       }
       .table-wrap {
         margin-top: 16px;
@@ -578,6 +783,9 @@
       }
       @media (max-width: 720px) {
         h1 { font-size: 22px; }
+        header::after {
+          font-size: 10px;
+        }
         table { font-size: 12px; }
         .table-wrap { max-height: 320px; }
         .wrap {
@@ -623,23 +831,26 @@
   <body>
     <div class="wrap">
       <header>
-        <h1>Kiểm tra domain và tracking</h1>
-        <div class="subtitle">Scan links containing a=mswl</div>
+        <h1>Tracking Domain Checker</h1>
       </header>
       <div class="panel">
         <div class="hint">Dán mỗi domain trên một dòng</div>
         <textarea id="domains"></textarea>
         <div class="row">
-          <button id="runBtn">Chạy kiểm tra</button>
-          <button id="jobToggleBtn" class="job-toggle-btn" type="button" disabled>Tạm dừng</button>
+          <button id="runBtn">Run Check</button>
+          <button id="jobToggleBtn" class="job-toggle-btn" type="button" disabled>Pause</button>
           <label class="toggle">
             <input id="scanWrapped" type="checkbox">
-            scan link bọc
+            <span class="toggle-box" aria-hidden="true"></span>
+            <span class="toggle-copy">
+              <span class="toggle-kicker">Mode</span>
+              <span class="toggle-label">wrapped-link scan</span>
+            </span>
           </label>
           <div id="status" class="hint"></div>
         </div>
         <div class="footer-note">
-          <code>403</code> có thể bị ảnh hưởng bởi IP/VPN, môi trường chạy hoặc cơ chế chống bot/rate-limit, nên không phải lúc nào cũng phản ánh đúng tình trạng thực tế của domain.
+          <code>403</code> có thể bị ảnh hưởng bởi IP/VPN, môi trường chạy hoặc cơ chế chống bot/rate-limit.
         </div>
       </div>
       <div class="panel">
@@ -649,16 +860,16 @@
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="M16 1H6a2 2 0 0 0-2 2v10h2V3h10V1zm3 4H10a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2zm0 16H10V7h9v14z"/>
             </svg>
-            Sao chép tóm tắt lỗi
+            Copy Error Summary
           </button>
           <button id="copyTableBtn" class="copy-btn" type="button">
             <svg viewBox="0 0 24 24" aria-hidden="true">
               <path d="M4 3h16a1 1 0 0 1 1 1v4h-2V5H5v14h4v2H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zm6 6h10a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H10a1 1 0 0 1-1-1V10a1 1 0 0 1 1-1zm1 3v2h8v-2h-8zm0 4v2h8v-2h-8z"/>
             </svg>
-            Sao chép bảng (Sheets)
+            Copy Table (Sheets)
           </button>
           <button id="sendChatBtn" class="copy-btn" type="button">
-            Gửi Google Chat
+            Send To Google Chat
           </button>
           <div class="scroll-hint"></div>
         </div>
@@ -676,11 +887,11 @@
           <div class="help-tooltip" role="tooltip">
             <ol>
               <li>Access failure: <code>0</code>, <code>4xx/5xx</code>, DNS, timeout.</li>
-              <li>Cross-domain redirect: <code>a=mswl</code> sang host khác.</li>
-              <li>HTTPS normalization: <code>http</code> -> <code>https</code> cùng link.</li>
-              <li>Wrapped link: UI link -> link trung gian -> tracking link.</li>
-              <li>Subpage discovery: tracking link nằm ở trang nội bộ.</li>
-              <li>No tracking: không có link chứa <code>a=mswl</code>.</li>
+              <li>Cross-domain redirect: <code>a=mswl</code> redirects to another host.</li>
+              <li>HTTPS normalization: <code>http</code> -> <code>https</code> on the same URL.</li>
+              <li>Wrapped link: UI link -> intermediate link -> tracking link.</li>
+              <li>Subpage discovery: tracking link found on a subpage.</li>
+              <li>No tracking: no links containing <code>a=mswl</code>.</li>
             </ol>
           </div>
         </div>
@@ -692,7 +903,7 @@
           <div id="tooltipTitle" class="tooltip-title"></div>
           <div id="tooltipSubtitle" class="tooltip-subtitle"></div>
         </div>
-        <button id="tooltipClose" class="tooltip-close" type="button">đóng</button>
+        <button id="tooltipClose" class="tooltip-close" type="button">close</button>
       </div>
       <div id="tooltipBody" class="tooltip-list"></div>
     </div>
@@ -733,7 +944,7 @@
         currentJobPaused = Boolean(paused);
         if (!jobToggleBtn) return;
         jobToggleBtn.disabled = !enabled;
-        jobToggleBtn.textContent = paused ? "Tiếp tục" : "Tạm dừng";
+        jobToggleBtn.textContent = paused ? "Resume" : "Pause";
         jobToggleBtn.classList.toggle("is-paused", Boolean(paused));
       }
 
@@ -812,7 +1023,7 @@
           const running = subscanRunningRows.has(sourceRowIdx);
           const completed = subscanCompletedRows.has(sourceRowIdx);
           const loadingClass = running ? " is-loading" : "";
-          const buttonText = running ? "đang quét..." : completed ? "đã quét" : "quét trang con";
+          const buttonText = running ? "scanning..." : completed ? "scanned" : "scan subpage";
           const disabledAttr = running || completed ? "disabled" : "";
           html += `<td><button class="subpage-scan-btn${loadingClass}" data-subscan-row="${sourceRowIdx}" ${disabledAttr}>${buttonText}</button></td>`;
           html += "</tr>";
@@ -880,7 +1091,7 @@
 
           if (isReportableAccessStatus(pageStatus)) {
             if (pageStatus === 0) {
-              lines.push(`${domain}: không truy cập được (${notes || "dns/network"})`);
+              lines.push(`${domain}: không truy cập được (${notes || "DNS/network"})`);
             } else {
               lines.push(`${domain}: page status ${pageStatus}`);
             }
@@ -891,9 +1102,9 @@
             const pairText = pairs.length ? ` (${pairs.join(", ")})` : "";
             const hasWrapped = badLinks.some((item) => String(item.wrapped_from || "").trim());
             if (hasWrapped) {
-              lines.push(`${domain}: Link lastest (bọc link)${pairText}`);
+              lines.push(`${domain}: chưa đổi domain link (bọc link)${pairText}`);
             } else {
-              lines.push(`${domain}: Link lastest${pairText}`);
+              lines.push(`${domain}: chưa đổi domain link${pairText}`);
             }
           }
         });
@@ -922,7 +1133,7 @@
 
           if (isReportableAccessStatus(pageStatus)) {
             if (pageStatus === 0) {
-              groups.access.push(`${domain}: không truy cập được (${notes || "dns/network"})`);
+              groups.access.push(`${domain}: không truy cập được (${notes || "DNS/network"})`);
             } else {
               groups.access.push(`${domain}: page status ${pageStatus}`);
             }
@@ -963,7 +1174,7 @@
           groups.latest.forEach((item) => lines.push(`- ${item}`));
         }
         if (groups.missingHttps.length) {
-          lines.push("[Thiếu https]");
+          lines.push("[Thiếu HTTPS]");
           groups.missingHttps.forEach((item) => lines.push(`- ${item}`));
         }
         if (groups.wrapped.length) {
@@ -1028,7 +1239,7 @@
         }
         if (groups.missingHttps.length) {
           groupSections.push({
-            header: "Thiếu https",
+            header: "Thiếu HTTPS",
             widgets: [{ textParagraph: { text: groups.missingHttps.map((line) => `- ${escapeForChatHtml(line)}`).join("<br>") } }],
           });
         }
@@ -1079,7 +1290,7 @@
         }
         runBtn.disabled = true;
         setJobToggleState(false, false);
-        setStatus("Đang bắt đầu quét...");
+        setStatus("Đang bắt đầu kiểm tra...");
         progressBar.style.width = "0%";
         progressText.textContent = `Đã xử lý 0/${domains.length}`;
         renderPendingState();
@@ -1096,7 +1307,7 @@
             }),
           });
           if (!resp.ok) {
-            throw new Error(`Server error ${resp.status}`);
+            throw new Error(`Lỗi máy chủ ${resp.status}`);
           }
           const data = await resp.json();
           currentJobId = String(data.job_id || "");
@@ -1131,7 +1342,7 @@
           });
           const data = await resp.json();
           if (!resp.ok) {
-            throw new Error(data.message || `Control error ${resp.status}`);
+            throw new Error(data.message || `Lỗi thao tác ${resp.status}`);
           }
           setJobToggleState(true, Boolean(data.paused));
           setStatus(data.paused ? "Đã tạm dừng." : "Đã tiếp tục.");
@@ -1203,7 +1414,7 @@
           });
           if (!resp.ok) {
             const errText = await resp.text();
-            throw new Error(errText || `Notify error ${resp.status}`);
+            throw new Error(errText || `Lỗi gửi thông báo ${resp.status}`);
           }
           setStatus("Đã gửi lên Google Chat.");
         } catch (err) {
@@ -1276,29 +1487,29 @@
             const subpageFromRaw = String(item.subpage_from || "");
             const subpageFrom = escapeHtml(subpageFromRaw);
             const subpageOpenButton = subpageFrom
-              ? `<a class="tooltip-open-link" href="${subpageFrom}" target="_blank" rel="noopener noreferrer">mở trang con</a>`
+              ? `<a class="tooltip-open-link" href="${subpageFrom}" target="_blank" rel="noopener noreferrer">open subpage</a>`
               : "";
             const sourcePill = subpageFromRaw
-              ? `<div class="tooltip-pill subpage">nguồn: trang con</div>`
-              : `<div class="tooltip-pill direct">nguồn: trang chủ</div>`;
+              ? `<div class="tooltip-pill subpage">source: subpage</div>`
+              : `<div class="tooltip-pill direct">source: homepage</div>`;
             const deviceHint = String(item.device_hint || "").toLowerCase();
             let devicePill = "";
             if (deviceHint === "mobile") {
-              devicePill = `<div class="tooltip-pill device device-mobile">thiết bị: mobile</div>`;
+              devicePill = `<div class="tooltip-pill device device-mobile">device: mobile</div>`;
             } else if (deviceHint === "responsive") {
-              devicePill = `<div class="tooltip-pill device device-responsive">biến thể: responsive</div>`;
+              devicePill = `<div class="tooltip-pill device device-responsive">variant: responsive</div>`;
             }
             const pathLine = wrappedFrom
               ? `<div class="path-grid">
-                  <div class="path-row"><div class="path-label">1. link tracking</div><div class="path-value">${link}</div></div>
-                  <div class="path-row"><div class="path-label">2. link cuoi</div><div class="path-value">${finalUrl}</div></div>
-                  <div class="path-row"><div class="path-label">link tren ui</div><div class="path-value">${sourceUrl}</div></div>
-                  <div class="path-row"><div class="path-label">link trung gian</div><div class="path-value">${wrappedFrom}</div></div>
+                  <div class="path-row"><div class="path-label">1. tracking link</div><div class="path-value">${link}</div></div>
+                  <div class="path-row"><div class="path-label">2. final link</div><div class="path-value">${finalUrl}</div></div>
+                  <div class="path-row"><div class="path-label">ui link</div><div class="path-value">${sourceUrl}</div></div>
+                  <div class="path-row"><div class="path-label">intermediate link</div><div class="path-value">${wrappedFrom}</div></div>
                 </div>`
               : `<div class="path-grid">
-                  <div class="path-row"><div class="path-label">1. link tracking</div><div class="path-value">${link}</div></div>
-                  <div class="path-row"><div class="path-label">2. link cuoi</div><div class="path-value">${finalUrl}</div></div>
-                  ${subpageFrom ? `<div class="path-row"><div class="path-label">trang con</div><div class="path-value">${subpageFrom}</div></div>` : ""}
+                  <div class="path-row"><div class="path-label">1. tracking link</div><div class="path-value">${link}</div></div>
+                  <div class="path-row"><div class="path-label">2. final link</div><div class="path-value">${finalUrl}</div></div>
+                  ${subpageFrom ? `<div class="path-row"><div class="path-label">subpage</div><div class="path-value">${subpageFrom}</div></div>` : ""}
                 </div>`;
             return `
               <div class="tooltip-item">
@@ -1352,14 +1563,14 @@
         const detailType = cell.dataset.detail;
         const detail = (lastData.details || [])[rowIdx] || {};
         const list = detail[detailType] || [];
-        const title = detailType === "tracking_ok" ? "Link tracking hợp lệ" : "Link tracking lỗi";
+        const title = detailType === "tracking_ok" ? "Valid tracking links" : "Invalid tracking links";
         const header = lastData.header || [];
         const rows = lastData.rows || [];
         const domainIdx = header.indexOf("domain");
         const domain = domainIdx >= 0 && rows[rowIdx] ? rows[rowIdx][domainIdx] : "";
         const pageUrlIdx = header.indexOf("page_url");
         const pageUrlForLocate = pageUrlIdx >= 0 && rows[rowIdx] ? rows[rowIdx][pageUrlIdx] : "";
-        const subtitle = `Dòng ${rowIdx + 1}${domain ? ` • ${domain}` : ""}`;
+        const subtitle = `Row ${rowIdx + 1}${domain ? ` • ${domain}` : ""}`;
         showTooltip(cell, title, subtitle, list, pageUrlForLocate);
       });
       tooltipClose.addEventListener("click", hideTooltip);
@@ -1408,7 +1619,7 @@
             const started = Number(data.started || 0);
             const pct = total ? Math.round((done / total) * 100) : 0;
             progressBar.style.width = `${pct}%`;
-            const runningText = started > done ? ` | Đã chạy ${started}/${total}` : "";
+            const runningText = started > done ? ` | Đang chạy ${started}/${total}` : "";
             const pausedText = data.paused ? " | Đã tạm dừng" : "";
             const currentDomainText = data.current_domain ? ` | ${data.current_domain}` : "";
             progressText.textContent = `Đã xử lý ${done}/${total}${runningText}`;
@@ -1459,7 +1670,7 @@
         if (subscanRunningRows.has(rowIdx)) return;
         subscanRunningRows.add(rowIdx);
         renderTable(lastData.header, lastData.rows);
-        setStatus(`Đang quét trang con: ${domain}...`);
+        setStatus(`Subpage scan: ${domain}...`);
         try {
           const resp = await fetch(`${API_BASE}/run`, {
             method: "POST",
@@ -1484,9 +1695,9 @@
           subscanCompletedRows.add(rowIdx);
           renderTable(lastData.header, lastData.rows);
           summaryBox.innerHTML = renderSummaryBox(lastData.header, lastData.rows, lastData.details || []);
-          setStatus(`Quét trang con xong: ${domain}`);
+          setStatus(`Subpage scan done: ${domain}`);
         } catch (err) {
-          setStatus(`Quét trang con thất bại: ${err}`);
+          setStatus(`Subpage scan failed: ${err}`);
         } finally {
           subscanRunningRows.delete(rowIdx);
           renderTable(lastData.header, lastData.rows);
