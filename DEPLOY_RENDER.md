@@ -29,7 +29,7 @@ PLAYWRIGHT_BROWSERS_PATH=0
 - Optional Environment Variable for Geo Audit:
 
 ```text
-NETWORK_PROFILES=[{"name":"vn-viettel","label":"VN / Viettel","country":"VN","carrier":"Viettel","asn":"AS7552","proxy_url":"http://user:pass@host:port"},{"name":"vn-vnpt","label":"VN / VNPT","country":"VN","carrier":"VNPT","asn":"AS45899","proxy_url":"http://user:pass@host:port"},{"name":"th-true","label":"TH / True","country":"TH","carrier":"True","asn":"AS38040","proxy_url":"http://user:pass@host:port"}]
+NETWORK_PROFILES=[{"name":"vn-viettel","label":"VN / Viettel","country":"VN","carrier":"Viettel","asn":"AS7552","proxy_url":"http://user:pass@proxy-viettel.example.com:10001"},{"name":"vn-vnpt","label":"VN / VNPT","country":"VN","carrier":"VNPT","asn":"AS45899","proxy_url":"http://user:pass@proxy-vnpt.example.com:10002"},{"name":"th-true","label":"TH / True","country":"TH","carrier":"True","asn":"AS38040","proxy_url":"http://user:pass@proxy-true.example.com:10003"}]
 ```
 
 ## Why this works
@@ -57,6 +57,18 @@ python3 -m pip install -r requirements.txt && PLAYWRIGHT_BROWSERS_PATH=0 python3
   - `carrier`
   - `asn`
   - `proxy_url`
+- `proxy_url` must use a real numeric port.
+  Valid example:
+
+```text
+http://user:pass@proxy-viettel.example.com:10001
+```
+
+Invalid example:
+
+```text
+http://user:pass@host:port
+```
 
 ## Quick test after deploy
 

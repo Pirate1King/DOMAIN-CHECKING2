@@ -154,6 +154,13 @@ class Handler(BaseHTTPRequestHandler):
         if profile_name not in profiles:
             self._send(400, "Invalid network profile", "text/plain; charset=utf-8")
             return
+        profile = profiles[profile_name]
+        try:
+            normalize_proxy_url(profile.get("proxy_url", ""))
+        except ValueError as exc:
+            label = profile.get("label") or profile_name
+            self._send(400, f"Invalid proxy_url for profile '{label}': {exc}", "text/plain; charset=utf-8")
+            return
         ok, error_message = audit_dependency_status()
         if not ok:
             self._send(400, error_message, "text/plain; charset=utf-8")
@@ -454,20 +461,40 @@ def list_network_profiles():
 def build_proxy_handler(proxy_url):
     if not proxy_url:
         return None
-    return ProxyHandler({"http": proxy_url, "https": proxy_url})
+    normalized = normalize_proxy_url(proxy_url)
+    return ProxyHandler({"http": normalized, "https": normalized})
 
 
 def build_playwright_proxy(proxy_url):
     if not proxy_url:
         return None
-    parsed = urlparse(proxy_url)
-    server = f"{parsed.scheme}://{parsed.hostname}:{parsed.port}" if parsed.hostname and parsed.port else proxy_url
+    normalized = normalize_proxy_url(proxy_url)
+    parsed = urlparse(normalized)
+    server = f"{parsed.scheme}://{parsed.hostname}:{parsed.port}" if parsed.hostname and parsed.port else normalized
     payload = {"server": server}
     if parsed.username:
         payload["username"] = parsed.username
     if parsed.password:
         payload["password"] = parsed.password
     return payload
+
+
+def normalize_proxy_url(proxy_url):
+    raw = str(proxy_url or "").strip()
+    if not raw:
+        return ""
+    parsed = urlparse(raw)
+    if parsed.scheme not in ("http", "https"):
+        raise ValueError("Proxy URL must start with http:// or https://")
+    if not parsed.hostname:
+        raise ValueError("Proxy URL is missing host")
+    try:
+        port = parsed.port
+    except ValueError:
+        raise ValueError("Proxy URL port must be a number")
+    if port is None:
+        raise ValueError("Proxy URL is missing port")
+    return raw
 
 
 def resolve_network_identity(profile):
