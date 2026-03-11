@@ -738,6 +738,9 @@
         color: var(--ink);
         font-size: 12px;
       }
+      select.webhook-input {
+        appearance: none;
+      }
       .copy-btn svg {
         width: 16px;
         height: 16px;
@@ -1020,6 +1023,7 @@
       <div class="view-tabs" role="tablist" aria-label="App mode">
         <button id="trackingTabBtn" class="view-tab is-active" type="button" role="tab" aria-selected="true">Tracking Scan</button>
         <button id="auditTabBtn" class="view-tab" type="button" role="tab" aria-selected="false">Page Audit</button>
+        <button id="geoAuditTabBtn" class="view-tab" type="button" role="tab" aria-selected="false">Geo Audit</button>
       </div>
       <section id="trackingView" class="app-view is-active">
         <div class="panel">
@@ -1119,6 +1123,41 @@
           <div id="auditResults"></div>
         </div>
       </section>
+      <section id="geoAuditView" class="app-view">
+        <div class="panel">
+          <div class="hint">Dán mỗi landing page URL trên một dòng</div>
+          <textarea id="geoAuditUrls" placeholder="https://example.com/landing-a&#10;example.com/landing-b"></textarea>
+          <div class="row">
+            <select id="geoProfileSelect" class="webhook-input"></select>
+            <button id="geoAuditRunBtn">Run Geo Audit</button>
+            <div id="geoAuditStatus" class="hint"></div>
+          </div>
+          <div class="footer-note">
+            Geo Audit chạy browser qua network profile đã chọn và đối chiếu IP/country/org quan sát được với profile mong muốn.
+          </div>
+        </div>
+        <div class="panel">
+          <div class="hint">Geo Summary</div>
+          <div class="audit-grid">
+            <div class="audit-stat">
+              <div class="audit-stat-label">Profile</div>
+              <div id="geoAuditProfileLabel" class="audit-stat-value">direct</div>
+              <div id="geoAuditProfileMeta" class="audit-stat-sub">No proxy override</div>
+            </div>
+            <div class="audit-stat">
+              <div class="audit-stat-label">Observed Network</div>
+              <div id="geoAuditObservedIp" class="audit-stat-value">-</div>
+              <div id="geoAuditObservedMeta" class="audit-stat-sub">No observation yet</div>
+            </div>
+          </div>
+          <div class="progress" aria-hidden="true">
+            <div id="geoAuditProgressBar" class="progress-bar"></div>
+          </div>
+          <div id="geoAuditProgressText" class="progress-text">Đã xử lý 0/0</div>
+          <div id="geoAuditSummaryBox" class="summary-box">Chưa có dữ liệu geo audit.</div>
+          <div id="geoAuditResults"></div>
+        </div>
+      </section>
     </div>
     <div id="wrappedPrompt" class="confirm-modal" aria-hidden="true">
       <div class="confirm-card" role="dialog" aria-modal="true" aria-labelledby="wrappedPromptTitle">
@@ -1145,8 +1184,10 @@
       const API_BASE = "";
       const trackingTabBtn = document.getElementById("trackingTabBtn");
       const auditTabBtn = document.getElementById("auditTabBtn");
+      const geoAuditTabBtn = document.getElementById("geoAuditTabBtn");
       const trackingView = document.getElementById("trackingView");
       const auditView = document.getElementById("auditView");
+      const geoAuditView = document.getElementById("geoAuditView");
       const runBtn = document.getElementById("runBtn");
       const scanWrappedEl = document.getElementById("scanWrapped");
       const statusEl = document.getElementById("status");
@@ -1177,10 +1218,25 @@
       const auditSummaryBox = document.getElementById("auditSummaryBox");
       const auditStatTotal = document.getElementById("auditStatTotal");
       const auditStatIssues = document.getElementById("auditStatIssues");
+      const geoAuditRunBtn = document.getElementById("geoAuditRunBtn");
+      const geoAuditUrlsEl = document.getElementById("geoAuditUrls");
+      const geoProfileSelect = document.getElementById("geoProfileSelect");
+      const geoAuditStatusEl = document.getElementById("geoAuditStatus");
+      const geoAuditResultsEl = document.getElementById("geoAuditResults");
+      const geoAuditProgressBar = document.getElementById("geoAuditProgressBar");
+      const geoAuditProgressText = document.getElementById("geoAuditProgressText");
+      const geoAuditSummaryBox = document.getElementById("geoAuditSummaryBox");
+      const geoAuditProfileLabel = document.getElementById("geoAuditProfileLabel");
+      const geoAuditProfileMeta = document.getElementById("geoAuditProfileMeta");
+      const geoAuditObservedIp = document.getElementById("geoAuditObservedIp");
+      const geoAuditObservedMeta = document.getElementById("geoAuditObservedMeta");
       let lastData = null;
       let lastAuditData = null;
+      let lastGeoAuditData = null;
+      let geoProfiles = [];
       let pollTimer = null;
       let auditPollTimer = null;
+      let geoAuditPollTimer = null;
       let activeDetailCell = null;
       let activeDetailRow = null;
       let subscanRunningRows = new Set();
@@ -1195,15 +1251,23 @@
       function setAuditStatus(text) {
         auditStatusEl.textContent = text;
       }
+      function setGeoAuditStatus(text) {
+        geoAuditStatusEl.textContent = text;
+      }
 
       function activateView(viewName) {
+        const showTracking = viewName === "tracking";
         const showAudit = viewName === "audit";
-        trackingView.classList.toggle("is-active", !showAudit);
+        const showGeo = viewName === "geo";
+        trackingView.classList.toggle("is-active", showTracking);
         auditView.classList.toggle("is-active", showAudit);
-        trackingTabBtn.classList.toggle("is-active", !showAudit);
+        geoAuditView.classList.toggle("is-active", showGeo);
+        trackingTabBtn.classList.toggle("is-active", showTracking);
         auditTabBtn.classList.toggle("is-active", showAudit);
-        trackingTabBtn.setAttribute("aria-selected", showAudit ? "false" : "true");
+        geoAuditTabBtn.classList.toggle("is-active", showGeo);
+        trackingTabBtn.setAttribute("aria-selected", showTracking ? "true" : "false");
         auditTabBtn.setAttribute("aria-selected", showAudit ? "true" : "false");
+        geoAuditTabBtn.setAttribute("aria-selected", showGeo ? "true" : "false");
       }
 
       function getNoTrackingRowIndexes(data) {
@@ -1302,6 +1366,11 @@
       function renderAuditPendingState() {
         auditResultsEl.innerHTML = "<div class='results-loader' aria-hidden='true'></div>";
         auditSummaryBox.textContent = "Đang audit...";
+      }
+
+      function renderGeoAuditPendingState() {
+        geoAuditResultsEl.innerHTML = "<div class='results-loader' aria-hidden='true'></div>";
+        geoAuditSummaryBox.textContent = "Đang geo audit...";
       }
 
       function renderTable(header, rows) {
@@ -2177,6 +2246,123 @@
         return lines.join("");
       }
 
+      function renderGeoAuditTable(items) {
+        if (!items || !items.length) {
+          geoAuditResultsEl.innerHTML = "<div class='hint'>Chưa có kết quả geo audit.</div>";
+          return;
+        }
+        let html = "<div class='table-wrap'><table><thead><tr>";
+        [
+          "url",
+          "profile",
+          "observed network",
+          "status",
+          "latency",
+          "cta",
+          "screenshots",
+          "notes",
+        ].forEach((label) => {
+          html += `<th>${label}</th>`;
+        });
+        html += "</tr></thead><tbody>";
+        items.forEach((item) => {
+          const statusCode = Number(item.http_status || 0);
+          const hasMismatch = String(item.notes || "").includes("country_mismatch") || String(item.notes || "").includes("carrier_mismatch") || String(item.notes || "").includes("asn_mismatch");
+          const hasIssue = Boolean(item.error) || Number(item.blocked_cta || 0) > 0 || Number(item.broken_images || 0) > 0 || Boolean(item.blank_risk) || hasMismatch;
+          const statusClass = statusCode >= 200 && statusCode < 400 && !item.error ? "status ok" : "status bad";
+          const noteClass = hasIssue ? "audit-note-bad" : "audit-note-warn";
+          const safeInput = escapeHtml(String(item.input_url || ""));
+          const safeProfile = escapeHtml(String(item.profile_label || item.profile_name || "direct"));
+          const observedIp = escapeHtml(String(item.observed_ip || "-"));
+          const observedCountry = escapeHtml(String(item.observed_country || "-"));
+          const observedOrg = escapeHtml(String(item.observed_org || "-"));
+          const expectedMeta = [
+            item.expected_country ? `expect ${escapeHtml(String(item.expected_country))}` : "",
+            item.expected_carrier ? `carrier ${escapeHtml(String(item.expected_carrier))}` : "",
+            item.expected_asn ? `asn ${escapeHtml(String(item.expected_asn))}` : "",
+          ].filter(Boolean).join(" | ");
+          const desktopShot = String(item.desktop_shot || "");
+          const mobileShot = String(item.mobile_shot || "");
+          const noteText = item.error ? String(item.error) : String(item.notes || "clean");
+          html += "<tr>";
+          html += `<td class="audit-cell-url"><a class="hacker-link" href="${safeInput}" target="_blank" rel="noopener noreferrer">${safeInput}</a></td>`;
+          html += `<td><div>${safeProfile}</div><div class="tooltip-context">${expectedMeta || "direct route"}</div></td>`;
+          html += `<td><div>${observedIp}</div><div class="tooltip-context">${observedCountry} | ${observedOrg}</div></td>`;
+          html += `<td class="${statusClass}">${item.error ? "error" : statusCode || "-"}</td>`;
+          html += `<td><div>${Number(item.response_ms || 0)} ms</div><div class="tooltip-context">load ${Number(item.load_ms || 0)} ms</div></td>`;
+          html += `<td><div>${Number(item.clickable_cta || 0)}/${Number(item.cta_total || 0)}</div><div class="tooltip-context">blocked ${Number(item.blocked_cta || 0)}</div></td>`;
+          html += `<td><div class="audit-link-pack">${desktopShot ? `<a class="audit-shot-link" href="${desktopShot}" target="_blank" rel="noopener noreferrer">desktop</a>` : ""}${mobileShot ? `<a class="audit-shot-link" href="${mobileShot}" target="_blank" rel="noopener noreferrer">mobile</a>` : ""}</div></td>`;
+          html += `<td><span class="audit-pill ${noteClass}">${escapeHtml(noteText || "clean")}</span></td>`;
+          html += "</tr>";
+        });
+        html += "</tbody></table></div>";
+        geoAuditResultsEl.innerHTML = html;
+      }
+
+      function renderGeoAuditSummary(items, network, selectedProfile) {
+        const total = (items || []).length;
+        const issueCount = (items || []).filter((item) => {
+          const notes = String(item.notes || "");
+          return Boolean(item.error) ||
+            Number(item.blocked_cta || 0) > 0 ||
+            notes.includes("country_mismatch") ||
+            notes.includes("carrier_mismatch") ||
+            notes.includes("asn_mismatch");
+        }).length;
+        const profile = selectedProfile || {};
+        geoAuditProfileLabel.textContent = String(profile.label || profile.name || "direct");
+        geoAuditProfileMeta.textContent = [
+          profile.country || "",
+          profile.carrier || "",
+          profile.asn || "",
+          profile.has_proxy ? "proxy" : "direct",
+        ].filter(Boolean).join(" | ") || "direct route";
+        geoAuditObservedIp.textContent = String((network || {}).ip || "-");
+        geoAuditObservedMeta.textContent = [
+          String((network || {}).country || "").trim(),
+          String((network || {}).org || "").trim(),
+          String((network || {}).city || "").trim(),
+        ].filter(Boolean).join(" | ") || "No observation yet";
+        if (!items || !items.length) {
+          return "Chưa có dữ liệu geo audit.";
+        }
+        const lines = [`<div>Total page: ${total} | Issue: ${issueCount}</div>`];
+        const mismatchRows = (items || []).filter((item) => {
+          const notes = String(item.notes || "");
+          return notes.includes("country_mismatch") || notes.includes("carrier_mismatch") || notes.includes("asn_mismatch");
+        });
+        mismatchRows.slice(0, 8).forEach((item) => {
+          lines.push(`<div class="summary-error">${escapeHtml(String(item.input_url || ""))}: ${escapeHtml(String(item.notes || ""))}</div>`);
+        });
+        if (!mismatchRows.length) {
+          lines.push("<div>Chưa phát hiện mismatch theo profile.</div>");
+        }
+        return lines.join("");
+      }
+
+      async function loadGeoProfiles() {
+        try {
+          const resp = await fetch(`${API_BASE}/geo/profiles`);
+          if (!resp.ok) {
+            throw new Error(`Lỗi profile ${resp.status}`);
+          }
+          const data = await resp.json();
+          const profiles = Array.isArray(data.profiles) ? data.profiles : [];
+          geoProfiles = profiles;
+          if (!profiles.length) {
+            geoProfileSelect.innerHTML = "<option value=\"direct\">Direct</option>";
+            return;
+          }
+          geoProfileSelect.innerHTML = profiles.map((profile) => {
+            const meta = [profile.country || "", profile.carrier || "", profile.asn || ""].filter(Boolean).join(" | ");
+            return `<option value="${escapeHtml(String(profile.name))}">${escapeHtml(String(profile.label || profile.name))}${meta ? ` - ${escapeHtml(meta)}` : ""}</option>`;
+          }).join("");
+        } catch (err) {
+          geoProfileSelect.innerHTML = "<option value=\"direct\">Direct</option>";
+          setGeoAuditStatus(String(err));
+        }
+      }
+
       function renderSummaryBox(header, rows, details) {
         const summary = buildErrorSummary(header, rows, details || []);
         const stats = computeReportStats(header, rows);
@@ -2241,6 +2427,7 @@
 
       trackingTabBtn.addEventListener("click", () => activateView("tracking"));
       auditTabBtn.addEventListener("click", () => activateView("audit"));
+      geoAuditTabBtn.addEventListener("click", () => activateView("geo"));
 
       auditRunBtn.addEventListener("click", async () => {
         const urls = parseAuditUrls(auditUrlsEl.value);
@@ -2273,6 +2460,89 @@
           auditRunBtn.disabled = false;
         }
       });
+
+      function startGeoAuditPolling(jobId) {
+        if (geoAuditPollTimer) {
+          clearInterval(geoAuditPollTimer);
+          geoAuditPollTimer = null;
+        }
+        geoAuditPollTimer = setInterval(async () => {
+          try {
+            const resp = await fetch(`${API_BASE}/geo/status?job=${jobId}`);
+            if (!resp.ok) {
+              throw new Error(`Lỗi trạng thái ${resp.status}`);
+            }
+            const data = await resp.json();
+            lastGeoAuditData = data;
+            const selectedProfile = geoProfiles.find((opt) => opt.name === data.profile) || { name: data.profile || "direct", label: data.profile || "direct" };
+            if ((data.items || []).length) {
+              renderGeoAuditTable(data.items);
+              geoAuditSummaryBox.innerHTML = renderGeoAuditSummary(data.items, data.network || {}, selectedProfile);
+            } else if (!data.done) {
+              renderGeoAuditPendingState();
+            }
+            if (data.error) {
+              setGeoAuditStatus(`Lỗi: ${data.error}`);
+              clearInterval(geoAuditPollTimer);
+              geoAuditPollTimer = null;
+              geoAuditRunBtn.disabled = false;
+              return;
+            }
+            const total = Number(data.total || 0);
+            const done = Number(data.completed || ((data.items || []).length || 0));
+            const started = Number(data.started || 0);
+            const pct = total ? Math.round((done / total) * 100) : 0;
+            geoAuditProgressBar.style.width = `${pct}%`;
+            const runningText = started > done ? ` | Đang chạy ${started}/${total}` : "";
+            geoAuditProgressText.textContent = `Đã xử lý ${done}/${total}${runningText}`;
+            setGeoAuditStatus(`Đã xử lý ${done}/${total}${runningText}${data.current_url ? ` | ${data.current_url}` : ""}`);
+            if (data.done) {
+              clearInterval(geoAuditPollTimer);
+              geoAuditPollTimer = null;
+              geoAuditRunBtn.disabled = false;
+              setGeoAuditStatus(`Geo audit hoàn tất. ${done} page.`);
+            }
+          } catch (err) {
+            setGeoAuditStatus(String(err));
+            clearInterval(geoAuditPollTimer);
+            geoAuditPollTimer = null;
+            geoAuditRunBtn.disabled = false;
+          }
+        }, 1000);
+      }
+
+      geoAuditRunBtn.addEventListener("click", async () => {
+        const urls = parseAuditUrls(geoAuditUrlsEl.value);
+        if (!urls.length) {
+          setGeoAuditStatus("Vui lòng nhập ít nhất một landing page URL.");
+          return;
+        }
+        const profile = String(geoProfileSelect.value || "direct");
+        activateView("geo");
+        geoAuditRunBtn.disabled = true;
+        setGeoAuditStatus("Đang bắt đầu geo audit...");
+        geoAuditProgressBar.style.width = "0%";
+        geoAuditProgressText.textContent = `Đã xử lý 0/${urls.length}`;
+        renderGeoAuditPendingState();
+        try {
+          const resp = await fetch(`${API_BASE}/geo/run`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ urls, profile }),
+          });
+          if (!resp.ok) {
+            const message = await resp.text();
+            throw new Error(message || `Lỗi máy chủ ${resp.status}`);
+          }
+          const data = await resp.json();
+          startGeoAuditPolling(data.job_id);
+        } catch (err) {
+          setGeoAuditStatus(String(err));
+          geoAuditRunBtn.disabled = false;
+        }
+      });
+
+      loadGeoProfiles();
 
       wrappedPromptYes.addEventListener("click", async () => {
         await runWrappedRecheckForRows(pendingWrappedPromptRows);

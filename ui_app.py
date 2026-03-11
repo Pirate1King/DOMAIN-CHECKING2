@@ -8,9 +8,9 @@ import uuid
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
-from urllib.parse import unquote
+from urllib.parse import unquote, urlparse
 from urllib.error import URLError
-from urllib.request import Request, urlopen
+from urllib.request import ProxyHandler, Request, build_opener, install_opener, urlopen
 
 from check_domains import build_output_header, process_domain
 
@@ -25,6 +25,10 @@ EGRESS_IP_SOURCES = (
     ("https://api.ipify.org?format=json", "ipify_json"),
     ("https://api.ipify.org", "ipify_text"),
     ("https://ifconfig.me/ip", "ifconfig_text"),
+)
+IPINFO_SOURCES = (
+    ("https://ipinfo.io/json", "ipinfo"),
+    ("https://api.ipify.org?format=json", "ipify_json"),
 )
 
 
@@ -44,8 +48,14 @@ class Handler(BaseHTTPRequestHandler):
         if self.path.startswith("/artifacts/"):
             self._handle_artifact()
             return
+        if self.path.startswith("/geo/profiles"):
+            self._handle_geo_profiles()
+            return
         if self.path.startswith("/egress-ip"):
             self._handle_egress_ip()
+            return
+        if self.path.startswith("/geo/status"):
+            self._handle_geo_status()
             return
         if self.path.startswith("/audit/status"):
             self._handle_audit_status()
@@ -62,6 +72,9 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         if self.path == "/notify":
             self._handle_notify()
+            return
+        if self.path == "/geo/run":
+            self._handle_geo_run()
             return
         if self.path == "/audit/run":
             self._handle_audit_run()
@@ -117,6 +130,35 @@ class Handler(BaseHTTPRequestHandler):
             self._send(400, error_message, "text/plain; charset=utf-8")
             return
         job_id = start_audit_job(urls)
+        body = json.dumps({"job_id": job_id})
+        self._send(200, body, "application/json; charset=utf-8")
+
+    def _handle_geo_run(self):
+        length = int(self.headers.get("Content-Length", "0"))
+        raw = self.rfile.read(length).decode("utf-8", errors="ignore")
+        try:
+            payload = json.loads(raw)
+        except json.JSONDecodeError:
+            self._send(400, "Invalid JSON", "text/plain; charset=utf-8")
+            return
+        urls = payload.get("urls", [])
+        profile_name = str(payload.get("profile", "")).strip()
+        if not isinstance(urls, list):
+            self._send(400, "Invalid urls", "text/plain; charset=utf-8")
+            return
+        urls = extract_urls(urls)
+        if not urls:
+            self._send(400, "Missing landing page URLs", "text/plain; charset=utf-8")
+            return
+        profiles = get_network_profiles()
+        if profile_name not in profiles:
+            self._send(400, "Invalid network profile", "text/plain; charset=utf-8")
+            return
+        ok, error_message = audit_dependency_status()
+        if not ok:
+            self._send(400, error_message, "text/plain; charset=utf-8")
+            return
+        job_id = start_audit_job(urls, kind="geo_audit", profile_name=profile_name)
         body = json.dumps({"job_id": job_id})
         self._send(200, body, "application/json; charset=utf-8")
 
@@ -224,6 +266,45 @@ class Handler(BaseHTTPRequestHandler):
         body = json.dumps(payload)
         self._send(200, body, "application/json; charset=utf-8")
 
+    def _handle_geo_status(self):
+        query = self.path.split("?", 1)
+        if len(query) < 2:
+            self._send(400, "Missing job id", "text/plain; charset=utf-8")
+            return
+        params = query[1].split("&")
+        job_id = ""
+        for param in params:
+            if param.startswith("job="):
+                job_id = param.split("=", 1)[1]
+                break
+        if not job_id:
+            self._send(400, "Missing job id", "text/plain; charset=utf-8")
+            return
+        with JOBS_LOCK:
+            job = JOBS.get(job_id)
+            if not job or job.get("kind") != "geo_audit":
+                self._send(404, "Job not found", "text/plain; charset=utf-8")
+                return
+            items = [item for item in job["items"] if item is not None]
+            payload = {
+                "items": items,
+                "total": job["total"],
+                "started": job.get("started", 0),
+                "current_url": job.get("current_url", ""),
+                "completed": job.get("completed", 0),
+                "done": job["done"],
+                "error": job["error"],
+                "profile": job.get("profile_name", ""),
+                "network": job.get("network_info", {}),
+            }
+        body = json.dumps(payload)
+        self._send(200, body, "application/json; charset=utf-8")
+
+    def _handle_geo_profiles(self):
+        profiles = list_network_profiles()
+        body = json.dumps({"profiles": profiles})
+        self._send(200, body, "application/json; charset=utf-8")
+
     def _handle_egress_ip(self):
         payload = resolve_egress_ip()
         status = 200 if payload.get("ip") else 502
@@ -319,6 +400,119 @@ def resolve_egress_ip():
     return {"ip": "", "source": "", "error": last_error or "unavailable"}
 
 
+def get_network_profiles():
+    raw = os.environ.get("NETWORK_PROFILES", "").strip()
+    profiles = {
+        "direct": {
+            "name": "direct",
+            "label": "Direct",
+            "country": "",
+            "carrier": "",
+            "asn": "",
+            "proxy_url": "",
+        }
+    }
+    if not raw:
+        return profiles
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError:
+        return profiles
+    if not isinstance(payload, list):
+        return profiles
+    for item in payload:
+        if not isinstance(item, dict):
+            continue
+        name = sanitize_slug(item.get("name") or item.get("label") or "")
+        if not name or name in profiles:
+            continue
+        profiles[name] = {
+            "name": name,
+            "label": str(item.get("label") or name).strip(),
+            "country": str(item.get("country") or "").strip(),
+            "carrier": str(item.get("carrier") or "").strip(),
+            "asn": str(item.get("asn") or "").strip(),
+            "proxy_url": str(item.get("proxy_url") or "").strip(),
+        }
+    return profiles
+
+
+def list_network_profiles():
+    return [
+        {
+            "name": item["name"],
+            "label": item["label"],
+            "country": item["country"],
+            "carrier": item["carrier"],
+            "asn": item["asn"],
+            "has_proxy": bool(item["proxy_url"]),
+        }
+        for item in get_network_profiles().values()
+    ]
+
+
+def build_proxy_handler(proxy_url):
+    if not proxy_url:
+        return None
+    return ProxyHandler({"http": proxy_url, "https": proxy_url})
+
+
+def build_playwright_proxy(proxy_url):
+    if not proxy_url:
+        return None
+    parsed = urlparse(proxy_url)
+    server = f"{parsed.scheme}://{parsed.hostname}:{parsed.port}" if parsed.hostname and parsed.port else proxy_url
+    payload = {"server": server}
+    if parsed.username:
+        payload["username"] = parsed.username
+    if parsed.password:
+        payload["password"] = parsed.password
+    return payload
+
+
+def resolve_network_identity(profile):
+    proxy_url = str((profile or {}).get("proxy_url") or "").strip()
+    last_error = ""
+    opener = None
+    if proxy_url:
+        opener = build_opener(build_proxy_handler(proxy_url))
+    for url, source in IPINFO_SOURCES:
+        try:
+            req = Request(url, headers={"User-Agent": "DOMAIN-CHECKING/1.0"})
+            if opener is not None:
+                with opener.open(req, timeout=12) as resp:
+                    raw = resp.read().decode("utf-8", errors="ignore").strip()
+            else:
+                with urlopen(req, timeout=12) as resp:
+                    raw = resp.read().decode("utf-8", errors="ignore").strip()
+        except Exception as exc:
+            last_error = str(exc)
+            continue
+        if source == "ipinfo":
+            try:
+                payload = json.loads(raw)
+            except json.JSONDecodeError:
+                last_error = "invalid_ipinfo"
+                continue
+            return {
+                "ip": str(payload.get("ip") or "").strip(),
+                "country": str(payload.get("country") or "").strip(),
+                "org": str(payload.get("org") or "").strip(),
+                "city": str(payload.get("city") or "").strip(),
+                "source": source,
+                "error": "",
+            }
+        try:
+            payload = json.loads(raw)
+        except json.JSONDecodeError:
+            last_error = "invalid_json_response"
+            continue
+        ip = str(payload.get("ip", "")).strip()
+        if ip:
+            return {"ip": ip, "country": "", "org": "", "city": "", "source": source, "error": ""}
+    return {"ip": "", "country": "", "org": "", "city": "", "source": "", "error": last_error or "unavailable"}
+
+
 def start_job(domains, ignore_https_redirect=False, scan_subpages=False, scan_wrapped=False):
     job_id = uuid.uuid4().hex
     header = build_output_header(["domain"])
@@ -348,11 +542,13 @@ def start_job(domains, ignore_https_redirect=False, scan_subpages=False, scan_wr
     return job_id
 
 
-def start_audit_job(urls):
+def start_audit_job(urls, kind="audit", profile_name="direct"):
     job_id = uuid.uuid4().hex
+    profiles = get_network_profiles()
+    profile = profiles.get(profile_name, profiles["direct"])
     with JOBS_LOCK:
         JOBS[job_id] = {
-            "kind": "audit",
+            "kind": kind,
             "items": [None] * len(urls),
             "total": len(urls),
             "started": 0,
@@ -361,10 +557,12 @@ def start_audit_job(urls):
             "completed": 0,
             "done": False,
             "error": "",
+            "profile_name": profile["name"],
+            "network_info": {},
         }
     thread = threading.Thread(
         target=run_audit_job,
-        args=(job_id, urls),
+        args=(job_id, urls, profile),
         daemon=True,
     )
     thread.start()
@@ -464,8 +662,14 @@ def audit_dependency_status():
     return True, ""
 
 
-def run_audit_job(job_id, urls):
+def run_audit_job(job_id, urls, profile):
     try:
+        network_info = resolve_network_identity(profile)
+        with JOBS_LOCK:
+            job = JOBS.get(job_id)
+            if not job:
+                return
+            job["network_info"] = network_info
         tasks = [(idx, url) for idx, url in enumerate(urls) if url]
         if tasks:
             worker_count = min(AUDIT_WORKERS, len(tasks))
@@ -482,7 +686,7 @@ def run_audit_job(job_id, urls):
                 while pending or future_map:
                     while pending and len(future_map) < worker_count:
                         idx, url = pending.pop(0)
-                        future = executor.submit(audit_landing_page, url, job_id, idx)
+                        future = executor.submit(audit_landing_page, url, job_id, idx, profile, network_info)
                         future_map[future] = (idx, url)
                         active_urls.add(url)
                         started_count += 1
@@ -542,7 +746,7 @@ def artifact_url(job_id, filename):
     return f"/artifacts/{job_id}/{filename}"
 
 
-def audit_landing_page(url, job_id, row_idx):
+def audit_landing_page(url, job_id, row_idx, profile=None, network_info=None):
     from playwright.sync_api import Error as PlaywrightError
     from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
     from playwright.sync_api import sync_playwright
@@ -576,10 +780,23 @@ def audit_landing_page(url, job_id, row_idx):
         "mobile_shot": "",
         "notes": "",
         "error": "",
+        "profile_name": str((profile or {}).get("name") or "direct"),
+        "profile_label": str((profile or {}).get("label") or "Direct"),
+        "expected_country": str((profile or {}).get("country") or ""),
+        "expected_carrier": str((profile or {}).get("carrier") or ""),
+        "expected_asn": str((profile or {}).get("asn") or ""),
+        "observed_ip": str((network_info or {}).get("ip") or ""),
+        "observed_country": str((network_info or {}).get("country") or ""),
+        "observed_org": str((network_info or {}).get("org") or ""),
+        "observed_city": str((network_info or {}).get("city") or ""),
     }
 
     with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
+        launch_args = {"headless": True}
+        pw_proxy = build_playwright_proxy(str((profile or {}).get("proxy_url") or "").strip())
+        if pw_proxy:
+            launch_args["proxy"] = pw_proxy
+        browser = p.chromium.launch(**launch_args)
         try:
             desktop_meta = audit_viewport(
                 browser,
@@ -659,6 +876,12 @@ def audit_landing_page(url, job_id, row_idx):
         notes.append("blank_risk")
     if result["console_errors"] > 0:
         notes.append("console_error")
+    if result["expected_country"] and result["observed_country"] and result["expected_country"].lower() != result["observed_country"].lower():
+        notes.append("country_mismatch")
+    if result["expected_asn"] and result["observed_org"] and result["expected_asn"].lower() not in result["observed_org"].lower():
+        notes.append("asn_mismatch")
+    if result["expected_carrier"] and result["observed_org"] and result["expected_carrier"].lower() not in result["observed_org"].lower():
+        notes.append("carrier_mismatch")
     result["notes"] = ", ".join(notes)
     return result
 
