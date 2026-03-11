@@ -21,6 +21,18 @@ JOBS = {}
 JOBS_LOCK = threading.Lock()
 DOMAIN_WORKERS = 4
 AUDIT_WORKERS = 2
+VIEWPORT_PRESETS = [
+    {"name": "desktop-xl", "label": "Desktop XL", "width": 1536, "height": 864, "device_type": "desktop", "is_mobile": False},
+    {"name": "desktop-hd", "label": "Desktop HD", "width": 1440, "height": 900, "device_type": "desktop", "is_mobile": False},
+    {"name": "laptop", "label": "Laptop", "width": 1366, "height": 768, "device_type": "desktop", "is_mobile": False},
+    {"name": "tablet-landscape", "label": "Tablet Landscape", "width": 1024, "height": 768, "device_type": "tablet", "is_mobile": False},
+    {"name": "tablet-portrait", "label": "Tablet Portrait", "width": 768, "height": 1024, "device_type": "tablet", "is_mobile": False},
+    {"name": "iphone-15-pro", "label": "iPhone 15 Pro", "width": 393, "height": 852, "device_type": "mobile", "is_mobile": True},
+    {"name": "iphone-plus", "label": "iPhone Plus", "width": 430, "height": 932, "device_type": "mobile", "is_mobile": True},
+    {"name": "pixel-7", "label": "Pixel 7", "width": 412, "height": 915, "device_type": "mobile", "is_mobile": True},
+    {"name": "galaxy-s23", "label": "Galaxy S23", "width": 360, "height": 780, "device_type": "mobile", "is_mobile": True},
+    {"name": "android-small", "label": "Android Small", "width": 360, "height": 640, "device_type": "mobile", "is_mobile": True},
+]
 EGRESS_IP_SOURCES = (
     ("https://api.ipify.org?format=json", "ipify_json"),
     ("https://api.ipify.org", "ipify_text"),
@@ -48,6 +60,9 @@ class Handler(BaseHTTPRequestHandler):
         if self.path.startswith("/artifacts/"):
             self._handle_artifact()
             return
+        if self.path.startswith("/viewport/status"):
+            self._handle_viewport_status()
+            return
         if self.path.startswith("/geo/profiles"):
             self._handle_geo_profiles()
             return
@@ -72,6 +87,9 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         if self.path == "/notify":
             self._handle_notify()
+            return
+        if self.path == "/viewport/run":
+            self._handle_viewport_run()
             return
         if self.path == "/geo/run":
             self._handle_geo_run()
@@ -166,6 +184,30 @@ class Handler(BaseHTTPRequestHandler):
             self._send(400, error_message, "text/plain; charset=utf-8")
             return
         job_id = start_audit_job(urls, kind="geo_audit", profile_name=profile_name)
+        body = json.dumps({"job_id": job_id})
+        self._send(200, body, "application/json; charset=utf-8")
+
+    def _handle_viewport_run(self):
+        length = int(self.headers.get("Content-Length", "0"))
+        raw = self.rfile.read(length).decode("utf-8", errors="ignore")
+        try:
+            payload = json.loads(raw)
+        except json.JSONDecodeError:
+            self._send(400, "Invalid JSON", "text/plain; charset=utf-8")
+            return
+        url = str(payload.get("url", "")).strip()
+        if not url:
+            self._send(400, "Missing landing page URL", "text/plain; charset=utf-8")
+            return
+        urls = extract_urls([url])
+        if not urls:
+            self._send(400, "Invalid landing page URL", "text/plain; charset=utf-8")
+            return
+        ok, error_message = audit_dependency_status()
+        if not ok:
+            self._send(400, error_message, "text/plain; charset=utf-8")
+            return
+        job_id = start_viewport_job(urls[0])
         body = json.dumps({"job_id": job_id})
         self._send(200, body, "application/json; charset=utf-8")
 
@@ -303,6 +345,37 @@ class Handler(BaseHTTPRequestHandler):
                 "error": job["error"],
                 "profile": job.get("profile_name", ""),
                 "network": job.get("network_info", {}),
+            }
+        body = json.dumps(payload)
+        self._send(200, body, "application/json; charset=utf-8")
+
+    def _handle_viewport_status(self):
+        query = self.path.split("?", 1)
+        if len(query) < 2:
+            self._send(400, "Missing job id", "text/plain; charset=utf-8")
+            return
+        params = query[1].split("&")
+        job_id = ""
+        for param in params:
+            if param.startswith("job="):
+                job_id = param.split("=", 1)[1]
+                break
+        if not job_id:
+            self._send(400, "Missing job id", "text/plain; charset=utf-8")
+            return
+        with JOBS_LOCK:
+            job = JOBS.get(job_id)
+            if not job or job.get("kind") != "viewport_gallery":
+                self._send(404, "Job not found", "text/plain; charset=utf-8")
+                return
+            payload = {
+                "url": job.get("url", ""),
+                "shots": [item for item in job.get("shots", []) if item is not None],
+                "total": job["total"],
+                "completed": job.get("completed", 0),
+                "done": job["done"],
+                "error": job["error"],
+                "current_view": job.get("current_view", ""),
             }
         body = json.dumps(payload)
         self._send(200, body, "application/json; charset=utf-8")
@@ -596,6 +669,28 @@ def start_audit_job(urls, kind="audit", profile_name="direct"):
     return job_id
 
 
+def start_viewport_job(url):
+    job_id = uuid.uuid4().hex
+    with JOBS_LOCK:
+        JOBS[job_id] = {
+            "kind": "viewport_gallery",
+            "url": url,
+            "shots": [None] * len(VIEWPORT_PRESETS),
+            "total": len(VIEWPORT_PRESETS),
+            "completed": 0,
+            "done": False,
+            "error": "",
+            "current_view": "",
+        }
+    thread = threading.Thread(
+        target=run_viewport_job,
+        args=(job_id, url),
+        daemon=True,
+    )
+    thread.start()
+    return job_id
+
+
 def run_job(job_id, domains, ignore_https_redirect=False, scan_subpages=False, scan_wrapped=False):
     header = build_output_header(["domain"])
     try:
@@ -674,6 +769,45 @@ def run_job(job_id, domains, ignore_https_redirect=False, scan_subpages=False, s
                 job["active_domains"] = []
                 job["done"] = True
     except Exception as exc:
+        with JOBS_LOCK:
+            job = JOBS.get(job_id)
+            if job:
+                job["done"] = True
+                job["error"] = str(exc)
+
+
+def run_viewport_job(job_id, url):
+    from playwright.sync_api import Error as PlaywrightError
+    from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
+    from playwright.sync_api import sync_playwright
+
+    artifact_dir = ARTIFACT_ROOT / job_id
+    artifact_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=True)
+            try:
+                for idx, preset in enumerate(VIEWPORT_PRESETS):
+                    with JOBS_LOCK:
+                        job = JOBS.get(job_id)
+                        if not job:
+                            return
+                        job["current_view"] = preset["label"]
+                    shot = capture_viewport_shot(browser, url, job_id, idx, preset, artifact_dir)
+                    with JOBS_LOCK:
+                        job = JOBS.get(job_id)
+                        if not job:
+                            return
+                        job["shots"][idx] = shot
+                        job["completed"] = int(job.get("completed", 0)) + 1
+            finally:
+                browser.close()
+        with JOBS_LOCK:
+            job = JOBS.get(job_id)
+            if job:
+                job["current_view"] = ""
+                job["done"] = True
+    except (PlaywrightTimeoutError, PlaywrightError, Exception) as exc:
         with JOBS_LOCK:
             job = JOBS.get(job_id)
             if job:
@@ -1056,6 +1190,44 @@ def audit_viewport(browser, url, viewport, screenshot_path, is_mobile=False):
     }
     context.close()
     return meta
+
+
+def capture_viewport_shot(browser, url, job_id, idx, preset, artifact_dir):
+    name = sanitize_slug(preset["name"])
+    screenshot_name = f"{idx + 1:03d}-{name}.png"
+    screenshot_path = artifact_dir / screenshot_name
+    context = browser.new_context(
+        viewport={"width": int(preset["width"]), "height": int(preset["height"])},
+        is_mobile=bool(preset.get("is_mobile")),
+        user_agent=(
+            "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 "
+            "(KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1"
+            if preset.get("is_mobile")
+            else "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+            "(KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
+        ),
+    )
+    page = context.new_page()
+    started_at = time.perf_counter()
+    response = page.goto(url, wait_until="load", timeout=30000)
+    load_ms = int((time.perf_counter() - started_at) * 1000)
+    try:
+        page.wait_for_load_state("networkidle", timeout=3000)
+    except Exception:
+        pass
+    page.screenshot(path=str(screenshot_path), full_page=False)
+    shot = {
+        "label": preset["label"],
+        "device_type": preset["device_type"],
+        "width": int(preset["width"]),
+        "height": int(preset["height"]),
+        "status": int(getattr(response, "status", 0) or 0),
+        "load_ms": load_ms,
+        "final_url": page.url,
+        "image_url": artifact_url(job_id, screenshot_name),
+    }
+    context.close()
+    return shot
 
 
 if __name__ == "__main__":

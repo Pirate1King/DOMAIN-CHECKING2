@@ -536,6 +536,49 @@
         color: #ffe08a;
         border-color: rgba(255, 208, 94, 0.4);
       }
+      .viewport-gallery {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 16px;
+        margin-top: 16px;
+      }
+      .viewport-card {
+        border: 1px solid rgba(28, 86, 60, 0.72);
+        border-radius: 14px;
+        background: rgba(4, 16, 11, 0.82);
+        overflow: hidden;
+        box-shadow: 0 8px 26px rgba(0, 0, 0, 0.2);
+      }
+      .viewport-thumb {
+        display: block;
+        width: 100%;
+        aspect-ratio: 10 / 16;
+        object-fit: cover;
+        background: #02110a;
+        border-bottom: 1px solid rgba(28, 86, 60, 0.6);
+      }
+      .viewport-meta {
+        padding: 12px;
+      }
+      .viewport-title {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        color: #edfff5;
+        font: 600 13px "JetBrains Mono", "Consolas", monospace;
+        text-transform: uppercase;
+      }
+      .viewport-dim {
+        margin-top: 6px;
+        color: var(--muted);
+        font: 11px "JetBrains Mono", "Consolas", monospace;
+      }
+      .viewport-stats {
+        margin-top: 8px;
+        color: #d2ffe8;
+        font: 11px "JetBrains Mono", "Consolas", monospace;
+      }
       .progress-text,
       .summary-box,
       .tooltip,
@@ -1053,6 +1096,7 @@
         <button id="trackingTabBtn" class="view-tab is-active" type="button" role="tab" aria-selected="true">Tracking Scan</button>
         <button id="auditTabBtn" class="view-tab" type="button" role="tab" aria-selected="false">Page Audit</button>
         <button id="geoAuditTabBtn" class="view-tab" type="button" role="tab" aria-selected="false">Geo Audit</button>
+        <button id="viewportTabBtn" class="view-tab" type="button" role="tab" aria-selected="false">Viewport Gallery</button>
       </div>
       <section id="trackingView" class="app-view is-active">
         <div class="panel">
@@ -1187,6 +1231,28 @@
           <div id="geoAuditResults"></div>
         </div>
       </section>
+      <section id="viewportView" class="app-view">
+        <div class="panel">
+          <div class="hint">Dán đúng 1 landing page URL để chụp nhiều viewport phổ biến</div>
+          <textarea id="viewportUrl" placeholder="https://example.com/landing-a"></textarea>
+          <div class="row">
+            <button id="viewportRunBtn">Run Viewport</button>
+            <div id="viewportStatus" class="hint"></div>
+          </div>
+          <div class="footer-note">
+            Viewport Gallery chụp trực tiếp 10 kích thước phổ biến và hiển thị ảnh inline ngay trong màn hình.
+          </div>
+        </div>
+        <div class="panel">
+          <div class="hint">Viewport Gallery</div>
+          <div class="progress" aria-hidden="true">
+            <div id="viewportProgressBar" class="progress-bar"></div>
+          </div>
+          <div id="viewportProgressText" class="progress-text">Đã xử lý 0/0</div>
+          <div id="viewportSummaryBox" class="summary-box">Chưa có dữ liệu viewport.</div>
+          <div id="viewportResults"></div>
+        </div>
+      </section>
     </div>
     <div id="wrappedPrompt" class="confirm-modal" aria-hidden="true">
       <div class="confirm-card" role="dialog" aria-modal="true" aria-labelledby="wrappedPromptTitle">
@@ -1214,9 +1280,11 @@
       const trackingTabBtn = document.getElementById("trackingTabBtn");
       const auditTabBtn = document.getElementById("auditTabBtn");
       const geoAuditTabBtn = document.getElementById("geoAuditTabBtn");
+      const viewportTabBtn = document.getElementById("viewportTabBtn");
       const trackingView = document.getElementById("trackingView");
       const auditView = document.getElementById("auditView");
       const geoAuditView = document.getElementById("geoAuditView");
+      const viewportView = document.getElementById("viewportView");
       const runBtn = document.getElementById("runBtn");
       const scanWrappedEl = document.getElementById("scanWrapped");
       const statusEl = document.getElementById("status");
@@ -1259,13 +1327,22 @@
       const geoAuditProfileMeta = document.getElementById("geoAuditProfileMeta");
       const geoAuditObservedIp = document.getElementById("geoAuditObservedIp");
       const geoAuditObservedMeta = document.getElementById("geoAuditObservedMeta");
+      const viewportRunBtn = document.getElementById("viewportRunBtn");
+      const viewportUrlEl = document.getElementById("viewportUrl");
+      const viewportStatusEl = document.getElementById("viewportStatus");
+      const viewportProgressBar = document.getElementById("viewportProgressBar");
+      const viewportProgressText = document.getElementById("viewportProgressText");
+      const viewportSummaryBox = document.getElementById("viewportSummaryBox");
+      const viewportResultsEl = document.getElementById("viewportResults");
       let lastData = null;
       let lastAuditData = null;
       let lastGeoAuditData = null;
       let geoProfiles = [];
+      let lastViewportData = null;
       let pollTimer = null;
       let auditPollTimer = null;
       let geoAuditPollTimer = null;
+      let viewportPollTimer = null;
       let activeDetailCell = null;
       let activeDetailRow = null;
       let subscanRunningRows = new Set();
@@ -1283,20 +1360,27 @@
       function setGeoAuditStatus(text) {
         geoAuditStatusEl.textContent = text;
       }
+      function setViewportStatus(text) {
+        viewportStatusEl.textContent = text;
+      }
 
       function activateView(viewName) {
         const showTracking = viewName === "tracking";
         const showAudit = viewName === "audit";
         const showGeo = viewName === "geo";
+        const showViewport = viewName === "viewport";
         trackingView.classList.toggle("is-active", showTracking);
         auditView.classList.toggle("is-active", showAudit);
         geoAuditView.classList.toggle("is-active", showGeo);
+        viewportView.classList.toggle("is-active", showViewport);
         trackingTabBtn.classList.toggle("is-active", showTracking);
         auditTabBtn.classList.toggle("is-active", showAudit);
         geoAuditTabBtn.classList.toggle("is-active", showGeo);
+        viewportTabBtn.classList.toggle("is-active", showViewport);
         trackingTabBtn.setAttribute("aria-selected", showTracking ? "true" : "false");
         auditTabBtn.setAttribute("aria-selected", showAudit ? "true" : "false");
         geoAuditTabBtn.setAttribute("aria-selected", showGeo ? "true" : "false");
+        viewportTabBtn.setAttribute("aria-selected", showViewport ? "true" : "false");
       }
 
       function getNoTrackingRowIndexes(data) {
@@ -1400,6 +1484,11 @@
       function renderGeoAuditPendingState() {
         geoAuditResultsEl.innerHTML = "<div class='results-loader' aria-hidden='true'></div>";
         geoAuditSummaryBox.textContent = "Đang geo audit...";
+      }
+
+      function renderViewportPendingState() {
+        viewportResultsEl.innerHTML = "<div class='results-loader' aria-hidden='true'></div>";
+        viewportSummaryBox.textContent = "Đang chụp viewport...";
       }
 
       function renderTable(header, rows) {
@@ -2388,6 +2477,36 @@
         return lines.join("");
       }
 
+      function renderViewportGallery(shots) {
+        if (!shots || !shots.length) {
+          viewportResultsEl.innerHTML = "<div class='hint'>Chưa có ảnh viewport.</div>";
+          return;
+        }
+        viewportResultsEl.innerHTML = `<div class="viewport-gallery">${shots.map((shot) => `
+          <div class="viewport-card">
+            <img class="viewport-thumb" src="${escapeHtml(String(shot.image_url || ""))}" alt="${escapeHtml(String(shot.label || ""))}" loading="lazy">
+            <div class="viewport-meta">
+              <div class="viewport-title">
+                <span>${escapeHtml(String(shot.label || ""))}</span>
+                <span class="audit-badge ${String(shot.device_type || "").toLowerCase() === "desktop" ? "match" : String(shot.device_type || "").toLowerCase() === "tablet" ? "warn" : "mismatch"}">${escapeHtml(String(shot.device_type || ""))}</span>
+              </div>
+              <div class="viewport-dim">${Number(shot.width || 0)} x ${Number(shot.height || 0)}</div>
+              <div class="viewport-stats">status ${Number(shot.status || 0) || "-"} | load ${Number(shot.load_ms || 0)} ms</div>
+            </div>
+          </div>
+        `).join("")}</div>`;
+      }
+
+      function renderViewportSummary(data) {
+        const shots = (data && data.shots) || [];
+        if (!shots.length) {
+          return "Chưa có dữ liệu viewport.";
+        }
+        const statusBad = shots.filter((shot) => Number(shot.status || 0) >= 400 || Number(shot.status || 0) === 0).length;
+        const slow = shots.filter((shot) => Number(shot.load_ms || 0) >= 5000).length;
+        return `<div>Total view: ${shots.length} | Bad status: ${statusBad} | Slow: ${slow}</div>`;
+      }
+
       async function loadGeoProfiles() {
         try {
           const resp = await fetch(`${API_BASE}/geo/profiles`);
@@ -2476,6 +2595,7 @@
       trackingTabBtn.addEventListener("click", () => activateView("tracking"));
       auditTabBtn.addEventListener("click", () => activateView("audit"));
       geoAuditTabBtn.addEventListener("click", () => activateView("geo"));
+      viewportTabBtn.addEventListener("click", () => activateView("viewport"));
 
       auditRunBtn.addEventListener("click", async () => {
         const urls = parseAuditUrls(auditUrlsEl.value);
@@ -2587,6 +2707,83 @@
         } catch (err) {
           setGeoAuditStatus(String(err));
           geoAuditRunBtn.disabled = false;
+        }
+      });
+
+      function startViewportPolling(jobId) {
+        if (viewportPollTimer) {
+          clearInterval(viewportPollTimer);
+          viewportPollTimer = null;
+        }
+        viewportPollTimer = setInterval(async () => {
+          try {
+            const resp = await fetch(`${API_BASE}/viewport/status?job=${jobId}`);
+            if (!resp.ok) {
+              throw new Error(`Lỗi trạng thái ${resp.status}`);
+            }
+            const data = await resp.json();
+            lastViewportData = data;
+            if ((data.shots || []).length) {
+              renderViewportGallery(data.shots);
+              viewportSummaryBox.innerHTML = renderViewportSummary(data);
+            } else if (!data.done) {
+              renderViewportPendingState();
+            }
+            if (data.error) {
+              setViewportStatus(`Lỗi: ${data.error}`);
+              clearInterval(viewportPollTimer);
+              viewportPollTimer = null;
+              viewportRunBtn.disabled = false;
+              return;
+            }
+            const total = Number(data.total || 0);
+            const done = Number(data.completed || ((data.shots || []).length || 0));
+            const pct = total ? Math.round((done / total) * 100) : 0;
+            viewportProgressBar.style.width = `${pct}%`;
+            viewportProgressText.textContent = `Đã xử lý ${done}/${total}${data.current_view ? ` | ${data.current_view}` : ""}`;
+            setViewportStatus(`Đã xử lý ${done}/${total}${data.current_view ? ` | ${data.current_view}` : ""}`);
+            if (data.done) {
+              clearInterval(viewportPollTimer);
+              viewportPollTimer = null;
+              viewportRunBtn.disabled = false;
+              setViewportStatus(`Viewport gallery hoàn tất. ${done} view.`);
+            }
+          } catch (err) {
+            setViewportStatus(String(err));
+            clearInterval(viewportPollTimer);
+            viewportPollTimer = null;
+            viewportRunBtn.disabled = false;
+          }
+        }, 1000);
+      }
+
+      viewportRunBtn.addEventListener("click", async () => {
+        const urls = parseAuditUrls(viewportUrlEl.value);
+        if (urls.length !== 1) {
+          setViewportStatus("Vui lòng nhập đúng 1 landing page URL.");
+          return;
+        }
+        activateView("viewport");
+        viewportRunBtn.disabled = true;
+        setViewportStatus("Đang bắt đầu viewport gallery...");
+        viewportProgressBar.style.width = "0%";
+        viewportProgressText.textContent = "Đã xử lý 0/10";
+        renderViewportPendingState();
+        try {
+          const resp = await fetch(`${API_BASE}/viewport/run`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ url: urls[0] }),
+          });
+          if (!resp.ok) {
+            const message = await resp.text();
+            throw new Error(message || `Lỗi máy chủ ${resp.status}`);
+          }
+          const data = await resp.json();
+          startViewportPolling(data.job_id);
+        } catch (err) {
+          setViewportStatus(String(err));
+          viewportRunBtn.disabled = false;
         }
       });
 
