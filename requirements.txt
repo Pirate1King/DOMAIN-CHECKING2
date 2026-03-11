@@ -1,1 +1,3 @@
-# No external dependencies.
+# Tracking scan works without third-party packages.
+# Page Audit requires Playwright + a browser install.
+playwright>=1.52,<2

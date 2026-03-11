@@ -87,6 +87,42 @@
         letter-spacing: 0.8px;
         text-transform: lowercase;
       }
+      .view-tabs {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin-top: 18px;
+      }
+      .view-tab {
+        border: 1px solid rgba(43, 150, 102, 0.48);
+        border-radius: 999px;
+        background: rgba(4, 18, 12, 0.92);
+        color: #9be8c4;
+        padding: 10px 16px;
+        font: 600 12px "JetBrains Mono", "Consolas", monospace;
+        letter-spacing: 0.5px;
+        text-transform: uppercase;
+        cursor: pointer;
+        transition: border-color 0.18s ease, box-shadow 0.18s ease, color 0.18s ease, transform 0.18s ease;
+      }
+      .view-tab:hover {
+        border-color: rgba(34, 201, 122, 0.85);
+        color: #ecfff4;
+        transform: translateY(-1px);
+        box-shadow: 0 0 18px rgba(24, 255, 134, 0.08);
+      }
+      .view-tab.is-active {
+        color: #03120c;
+        border-color: rgba(34, 201, 122, 0.98);
+        background: linear-gradient(180deg, #1bff88, #14c66e);
+        box-shadow: 0 0 24px rgba(24, 255, 134, 0.22);
+      }
+      .app-view {
+        display: none;
+      }
+      .app-view.is-active {
+        display: block;
+      }
       .panel {
         margin-top: 20px;
         background:
@@ -397,6 +433,79 @@
         margin-top: 8px;
         color: var(--muted);
         font-size: 12px;
+      }
+      .audit-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 14px;
+        margin-top: 16px;
+      }
+      .audit-stat {
+        border: 1px solid rgba(28, 86, 60, 0.72);
+        border-radius: 12px;
+        background: rgba(4, 16, 11, 0.76);
+        padding: 14px;
+        min-height: 92px;
+      }
+      .audit-stat-label {
+        color: #7fd4b2;
+        font: 11px "JetBrains Mono", "Consolas", monospace;
+        text-transform: uppercase;
+        letter-spacing: 0.8px;
+      }
+      .audit-stat-value {
+        margin-top: 8px;
+        color: #ecfff4;
+        font: 700 28px "JetBrains Mono", "Consolas", monospace;
+      }
+      .audit-stat-sub {
+        margin-top: 6px;
+        color: var(--muted);
+        font-size: 12px;
+      }
+      .audit-link-pack {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+      .audit-shot-link {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 64px;
+        padding: 6px 10px;
+        border-radius: 999px;
+        border: 1px solid rgba(34, 201, 122, 0.42);
+        background: rgba(7, 26, 18, 0.9);
+        color: #d9ffee;
+        text-decoration: none;
+        font: 11px "JetBrains Mono", "Consolas", monospace;
+        text-transform: uppercase;
+      }
+      .audit-shot-link:hover {
+        border-color: rgba(34, 201, 122, 0.82);
+        box-shadow: 0 0 16px rgba(24, 255, 134, 0.12);
+      }
+      .audit-cell-url {
+        min-width: 260px;
+      }
+      .audit-note-bad {
+        color: #ff8f8f;
+      }
+      .audit-note-warn {
+        color: #ffd36b;
+      }
+      .audit-pill {
+        display: inline-flex;
+        align-items: center;
+        padding: 4px 8px;
+        border-radius: 999px;
+        border: 1px solid rgba(34, 201, 122, 0.35);
+        background: rgba(9, 28, 18, 0.84);
+        font: 11px "JetBrains Mono", "Consolas", monospace;
+        text-transform: uppercase;
+        letter-spacing: 0.4px;
       }
       .progress-text,
       .summary-box,
@@ -885,6 +994,9 @@
         .actions .copy-btn {
           justify-content: center;
         }
+        .audit-grid {
+          grid-template-columns: 1fr;
+        }
         .actions .webhook-input {
           flex: 1 1 100%;
           min-width: 0;
@@ -905,68 +1017,108 @@
       <header>
         <h1>Tracking Domain Checker</h1>
       </header>
-      <div class="panel">
-        <div class="hint">Dán mỗi domain trên một dòng</div>
-        <textarea id="domains"></textarea>
-        <div class="row">
-          <button id="runBtn">Run Check</button>
-          <label class="toggle">
-            <input id="scanWrapped" type="checkbox">
-            <span class="toggle-box" aria-hidden="true"></span>
-            <span class="toggle-copy">
-              <span class="toggle-kicker">Mode</span>
-              <span class="toggle-label">wrapped-link scan</span>
-            </span>
-          </label>
-          <div id="status" class="hint"></div>
-        </div>
-        <div class="footer-note">
-          <code>403</code> có thể bị ảnh hưởng bởi IP/VPN, môi trường chạy hoặc cơ chế chống bot/rate-limit.
-        </div>
+      <div class="view-tabs" role="tablist" aria-label="App mode">
+        <button id="trackingTabBtn" class="view-tab is-active" type="button" role="tab" aria-selected="true">Tracking Scan</button>
+        <button id="auditTabBtn" class="view-tab" type="button" role="tab" aria-selected="false">Page Audit</button>
       </div>
-      <div class="panel">
-        <div class="hint">Kết quả</div>
-        <div class="actions">
-          <button id="copyBtn" class="copy-btn" type="button">
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M16 1H6a2 2 0 0 0-2 2v10h2V3h10V1zm3 4H10a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2zm0 16H10V7h9v14z"/>
-            </svg>
-            Copy Error Summary
-          </button>
-          <button id="copyTableBtn" class="copy-btn" type="button">
-            <svg viewBox="0 0 24 24" aria-hidden="true">
-              <path d="M4 3h16a1 1 0 0 1 1 1v4h-2V5H5v14h4v2H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zm6 6h10a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H10a1 1 0 0 1-1-1V10a1 1 0 0 1 1-1zm1 3v2h8v-2h-8zm0 4v2h8v-2h-8z"/>
-            </svg>
-            Copy Table (Sheets)
-          </button>
-          <button id="sendChatBtn" class="copy-btn" type="button">
-            Send To Google Chat
-          </button>
-          <div class="scroll-hint"></div>
-        </div>
-        <div class="actions">
-          <input id="webhookUrl" class="webhook-input" type="password" placeholder="Webhook Google Chat">
-        </div>
-        <div class="progress" aria-hidden="true">
-          <div id="progressBar" class="progress-bar"></div>
-        </div>
-        <div id="progressText" class="progress-text">Đã xử lý 0/0</div>
-        <div id="summaryBox" class="summary-box">Chưa có lỗi.</div>
-        <div id="results"></div>
-        <div class="help-wrap">
-          <span class="help-icon" tabindex="0" aria-label="Giải thích lỗi">i</span>
-          <div class="help-tooltip" role="tooltip">
-            <ol>
-              <li>Access failure: <code>0</code>, <code>4xx/5xx</code>, DNS, timeout.</li>
-              <li>Cross-domain redirect: <code>a=mswl</code> redirects to another host.</li>
-              <li>HTTPS normalization: <code>http</code> -> <code>https</code> on the same URL.</li>
-              <li>Wrapped link: UI link -> intermediate link -> tracking link.</li>
-              <li>Subpage discovery: tracking link found on a subpage.</li>
-              <li>No tracking: no links containing <code>a=mswl</code>.</li>
-            </ol>
+      <section id="trackingView" class="app-view is-active">
+        <div class="panel">
+          <div class="hint">Dán mỗi domain trên một dòng</div>
+          <textarea id="domains"></textarea>
+          <div class="row">
+            <button id="runBtn">Run Check</button>
+            <label class="toggle">
+              <input id="scanWrapped" type="checkbox">
+              <span class="toggle-box" aria-hidden="true"></span>
+              <span class="toggle-copy">
+                <span class="toggle-kicker">Mode</span>
+                <span class="toggle-label">wrapped-link scan</span>
+              </span>
+            </label>
+            <div id="status" class="hint"></div>
+          </div>
+          <div class="footer-note">
+            <code>403</code> có thể bị ảnh hưởng bởi IP/VPN, môi trường chạy hoặc cơ chế chống bot/rate-limit.
           </div>
         </div>
-      </div>
+        <div class="panel">
+          <div class="hint">Kết quả</div>
+          <div class="actions">
+            <button id="copyBtn" class="copy-btn" type="button">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M16 1H6a2 2 0 0 0-2 2v10h2V3h10V1zm3 4H10a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2zm0 16H10V7h9v14z"/>
+              </svg>
+              Copy Error Summary
+            </button>
+            <button id="copyTableBtn" class="copy-btn" type="button">
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M4 3h16a1 1 0 0 1 1 1v4h-2V5H5v14h4v2H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zm6 6h10a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H10a1 1 0 0 1-1-1V10a1 1 0 0 1 1-1zm1 3v2h8v-2h-8zm0 4v2h8v-2h-8z"/>
+              </svg>
+              Copy Table (Sheets)
+            </button>
+            <button id="sendChatBtn" class="copy-btn" type="button">
+              Send To Google Chat
+            </button>
+            <div class="scroll-hint"></div>
+          </div>
+          <div class="actions">
+            <input id="webhookUrl" class="webhook-input" type="password" placeholder="Webhook Google Chat">
+          </div>
+          <div class="progress" aria-hidden="true">
+            <div id="progressBar" class="progress-bar"></div>
+          </div>
+          <div id="progressText" class="progress-text">Đã xử lý 0/0</div>
+          <div id="summaryBox" class="summary-box">Chưa có lỗi.</div>
+          <div id="results"></div>
+          <div class="help-wrap">
+            <span class="help-icon" tabindex="0" aria-label="Giải thích lỗi">i</span>
+            <div class="help-tooltip" role="tooltip">
+              <ol>
+                <li>Access failure: <code>0</code>, <code>4xx/5xx</code>, DNS, timeout.</li>
+                <li>Cross-domain redirect: <code>a=mswl</code> redirects to another host.</li>
+                <li>HTTPS normalization: <code>http</code> -> <code>https</code> on the same URL.</li>
+                <li>Wrapped link: UI link -> intermediate link -> tracking link.</li>
+                <li>Subpage discovery: tracking link found on a subpage.</li>
+                <li>No tracking: no links containing <code>a=mswl</code>.</li>
+              </ol>
+            </div>
+          </div>
+        </div>
+      </section>
+      <section id="auditView" class="app-view">
+        <div class="panel">
+          <div class="hint">Dán mỗi landing page URL trên một dòng</div>
+          <textarea id="auditUrls" placeholder="https://example.com/landing-a&#10;example.com/landing-b"></textarea>
+          <div class="row">
+            <button id="auditRunBtn">Run Audit</button>
+            <div id="auditStatus" class="hint"></div>
+          </div>
+          <div class="footer-note">
+            Browser audit dùng Chromium headless để đo phản hồi, kiểm tra CTA, broken media và chụp ảnh desktop/mobile.
+          </div>
+        </div>
+        <div class="panel">
+          <div class="hint">Audit Summary</div>
+          <div class="audit-grid">
+            <div class="audit-stat">
+              <div class="audit-stat-label">Pages</div>
+              <div id="auditStatTotal" class="audit-stat-value">0</div>
+              <div class="audit-stat-sub">Tổng landing page trong job</div>
+            </div>
+            <div class="audit-stat">
+              <div class="audit-stat-label">Visual / CTA Issues</div>
+              <div id="auditStatIssues" class="audit-stat-value">0</div>
+              <div class="audit-stat-sub">CTA blocked, broken media, blank risk</div>
+            </div>
+          </div>
+          <div class="progress" aria-hidden="true">
+            <div id="auditProgressBar" class="progress-bar"></div>
+          </div>
+          <div id="auditProgressText" class="progress-text">Đã xử lý 0/0</div>
+          <div id="auditSummaryBox" class="summary-box">Chưa có dữ liệu audit.</div>
+          <div id="auditResults"></div>
+        </div>
+      </section>
     </div>
     <div id="wrappedPrompt" class="confirm-modal" aria-hidden="true">
       <div class="confirm-card" role="dialog" aria-modal="true" aria-labelledby="wrappedPromptTitle">
@@ -991,6 +1143,10 @@
     </div>
     <script>
       const API_BASE = "";
+      const trackingTabBtn = document.getElementById("trackingTabBtn");
+      const auditTabBtn = document.getElementById("auditTabBtn");
+      const trackingView = document.getElementById("trackingView");
+      const auditView = document.getElementById("auditView");
       const runBtn = document.getElementById("runBtn");
       const scanWrappedEl = document.getElementById("scanWrapped");
       const statusEl = document.getElementById("status");
@@ -1012,8 +1168,19 @@
       const wrappedPromptText = document.getElementById("wrappedPromptText");
       const wrappedPromptYes = document.getElementById("wrappedPromptYes");
       const wrappedPromptNo = document.getElementById("wrappedPromptNo");
+      const auditRunBtn = document.getElementById("auditRunBtn");
+      const auditUrlsEl = document.getElementById("auditUrls");
+      const auditStatusEl = document.getElementById("auditStatus");
+      const auditResultsEl = document.getElementById("auditResults");
+      const auditProgressBar = document.getElementById("auditProgressBar");
+      const auditProgressText = document.getElementById("auditProgressText");
+      const auditSummaryBox = document.getElementById("auditSummaryBox");
+      const auditStatTotal = document.getElementById("auditStatTotal");
+      const auditStatIssues = document.getElementById("auditStatIssues");
       let lastData = null;
+      let lastAuditData = null;
       let pollTimer = null;
+      let auditPollTimer = null;
       let activeDetailCell = null;
       let activeDetailRow = null;
       let subscanRunningRows = new Set();
@@ -1024,6 +1191,19 @@
       let currentRunWrappedMode = false;
       function setStatus(text) {
         statusEl.textContent = text;
+      }
+      function setAuditStatus(text) {
+        auditStatusEl.textContent = text;
+      }
+
+      function activateView(viewName) {
+        const showAudit = viewName === "audit";
+        trackingView.classList.toggle("is-active", !showAudit);
+        auditView.classList.toggle("is-active", showAudit);
+        trackingTabBtn.classList.toggle("is-active", !showAudit);
+        auditTabBtn.classList.toggle("is-active", showAudit);
+        trackingTabBtn.setAttribute("aria-selected", showAudit ? "false" : "true");
+        auditTabBtn.setAttribute("aria-selected", showAudit ? "true" : "false");
       }
 
       function getNoTrackingRowIndexes(data) {
@@ -1117,6 +1297,11 @@
       function renderPendingState() {
         resultsEl.innerHTML = "<div class='results-loader' aria-hidden='true'></div>";
         summaryBox.textContent = "Đang kiểm tra...";
+      }
+
+      function renderAuditPendingState() {
+        auditResultsEl.innerHTML = "<div class='results-loader' aria-hidden='true'></div>";
+        auditSummaryBox.textContent = "Đang audit...";
       }
 
       function renderTable(header, rows) {
@@ -1869,6 +2054,129 @@
         return found;
       }
 
+      function parseAuditUrls(text) {
+        const lines = text.split(/\r?\n/);
+        const found = [];
+        const seen = new Set();
+        lines.forEach((line) => {
+          let value = String(line || "").trim();
+          if (!value) return;
+          if (!/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(value)) {
+            value = `https://${value}`;
+          }
+          if (!seen.has(value)) {
+            seen.add(value);
+            found.push(value);
+          }
+        });
+        return found;
+      }
+
+      function renderAuditTable(items) {
+        if (!items || !items.length) {
+          auditResultsEl.innerHTML = "<div class='hint'>Chưa có kết quả audit.</div>";
+          return;
+        }
+        let html = "<div class='table-wrap'><table><thead><tr>";
+        [
+          "url",
+          "status",
+          "latency",
+          "cta",
+          "broken media",
+          "console",
+          "screenshots",
+          "notes",
+        ].forEach((label) => {
+          html += `<th>${label}</th>`;
+        });
+        html += "</tr></thead><tbody>";
+        items.forEach((item) => {
+          const statusCode = Number(item.http_status || 0);
+          const blockedCta = Number(item.blocked_cta || 0);
+          const brokenImages = Number(item.broken_images || 0);
+          const topBrokenImages = Number(item.top_broken_images || 0);
+          const consoleErrors = Number(item.console_errors || 0);
+          const requestFailures = Number(item.request_failures || 0);
+          const overlayRisk = Boolean(item.overlay_risk);
+          const heroMediaPresent = Boolean(item.hero_media_present);
+          const hasIssue = Boolean(item.error) || blockedCta > 0 || brokenImages > 0 || Boolean(item.blank_risk) || consoleErrors > 0 || overlayRisk || !heroMediaPresent;
+          const statusClass = statusCode >= 200 && statusCode < 400 && !item.error ? "status ok" : "status bad";
+          const noteClass = hasIssue ? "audit-note-bad" : "audit-note-warn";
+          const safeInput = escapeHtml(String(item.input_url || ""));
+          const safeFinal = escapeHtml(String(item.final_url || ""));
+          const desktopShot = String(item.desktop_shot || "");
+          const mobileShot = String(item.mobile_shot || "");
+          const noteText = item.error ? String(item.error) : String(item.notes || "clean");
+          const visualMeta = [
+            `request fail ${requestFailures}`,
+            topBrokenImages ? `hero broken ${topBrokenImages}` : "",
+            overlayRisk ? `overlay ${Number(item.overlay_blocked_cta || 0)}` : "",
+            !heroMediaPresent ? "hero missing" : "",
+          ].filter(Boolean).join(" | ");
+          html += "<tr>";
+          html += `<td class="audit-cell-url"><a class="hacker-link" href="${safeInput}" target="_blank" rel="noopener noreferrer">${safeInput}</a>${safeFinal && safeFinal !== safeInput ? `<div class="tooltip-context">final: ${safeFinal}</div>` : ""}</td>`;
+          html += `<td class="${statusClass}">${item.error ? "error" : statusCode || "-"}</td>`;
+          html += `<td><div>${Number(item.response_ms || 0)} ms</div><div class="tooltip-context">load ${Number(item.load_ms || 0)} ms</div></td>`;
+          html += `<td><div>${Number(item.clickable_cta || 0)}/${Number(item.cta_total || 0)}</div><div class="tooltip-context">blocked ${blockedCta}</div></td>`;
+          html += `<td><div>${brokenImages}</div><div class="tooltip-context">${escapeHtml(visualMeta || "clean")}</div></td>`;
+          html += `<td>${consoleErrors}</td>`;
+          html += `<td><div class="audit-link-pack">${desktopShot ? `<a class="audit-shot-link" href="${desktopShot}" target="_blank" rel="noopener noreferrer">desktop</a>` : ""}${mobileShot ? `<a class="audit-shot-link" href="${mobileShot}" target="_blank" rel="noopener noreferrer">mobile</a>` : ""}</div></td>`;
+          html += `<td><span class="audit-pill ${noteClass}">${escapeHtml(noteText || "clean")}</span></td>`;
+          html += "</tr>";
+        });
+        html += "</tbody></table></div>";
+        auditResultsEl.innerHTML = html;
+      }
+
+      function computeAuditStats(items) {
+        const total = (items || []).length;
+        let issueCount = 0;
+        let slowCount = 0;
+        (items || []).forEach((item) => {
+          const hasIssue = Boolean(item.error) ||
+            Number(item.blocked_cta || 0) > 0 ||
+            Number(item.broken_images || 0) > 0 ||
+            Number(item.console_errors || 0) > 0 ||
+            Boolean(item.blank_risk) ||
+            Boolean(item.overlay_risk) ||
+            !Boolean(item.hero_media_present);
+          if (hasIssue) issueCount += 1;
+          if (Number(item.load_ms || 0) >= 5000) slowCount += 1;
+        });
+        return { total, issueCount, slowCount };
+      }
+
+      function renderAuditSummary(items) {
+        const stats = computeAuditStats(items || []);
+        auditStatTotal.textContent = String(stats.total);
+        auditStatIssues.textContent = String(stats.issueCount);
+        if (!items || !items.length) {
+          return "Chưa có dữ liệu audit.";
+        }
+        const lines = [
+          `<div>Total page: ${stats.total} | Issue: ${stats.issueCount} | Slow: ${stats.slowCount}</div>`,
+        ];
+        const notable = (items || []).filter((item) =>
+          Boolean(item.error) ||
+          Number(item.blocked_cta || 0) > 0 ||
+          Number(item.broken_images || 0) > 0 ||
+          Boolean(item.blank_risk) ||
+          Boolean(item.overlay_risk) ||
+          !Boolean(item.hero_media_present)
+        );
+        if (!notable.length) {
+          lines.push("<div>Chưa phát hiện lỗi visual/CTA lớn.</div>");
+          return lines.join("");
+        }
+        notable.slice(0, 8).forEach((item) => {
+          const label = escapeHtml(String(item.input_url || ""));
+          const note = escapeHtml(String(item.error || item.notes || "issue"));
+          lines.push(`<div class="summary-error">${label}: ${note}</div>`);
+        });
+        return lines.join("");
+      }
+
       function renderSummaryBox(header, rows, details) {
         const summary = buildErrorSummary(header, rows, details || []);
         const stats = computeReportStats(header, rows);
@@ -1881,6 +2189,90 @@
         }).join("");
         return `${statLine}${issues}`;
       }
+
+      function startAuditPolling(jobId) {
+        if (auditPollTimer) {
+          clearInterval(auditPollTimer);
+          auditPollTimer = null;
+        }
+        auditPollTimer = setInterval(async () => {
+          try {
+            const resp = await fetch(`${API_BASE}/audit/status?job=${jobId}`);
+            if (!resp.ok) {
+              throw new Error(`Lỗi trạng thái ${resp.status}`);
+            }
+            const data = await resp.json();
+            lastAuditData = data;
+            if ((data.items || []).length) {
+              renderAuditTable(data.items);
+              auditSummaryBox.innerHTML = renderAuditSummary(data.items);
+            } else if (!data.done) {
+              renderAuditPendingState();
+            }
+            if (data.error) {
+              setAuditStatus(`Lỗi: ${data.error}`);
+              clearInterval(auditPollTimer);
+              auditPollTimer = null;
+              auditRunBtn.disabled = false;
+              return;
+            }
+            const total = Number(data.total || 0);
+            const done = Number(data.completed || ((data.items || []).length || 0));
+            const started = Number(data.started || 0);
+            const pct = total ? Math.round((done / total) * 100) : 0;
+            auditProgressBar.style.width = `${pct}%`;
+            const runningText = started > done ? ` | Đang chạy ${started}/${total}` : "";
+            auditProgressText.textContent = `Đã xử lý ${done}/${total}${runningText}`;
+            setAuditStatus(`Đã xử lý ${done}/${total}${runningText}${data.current_url ? ` | ${data.current_url}` : ""}`);
+            if (data.done) {
+              clearInterval(auditPollTimer);
+              auditPollTimer = null;
+              auditRunBtn.disabled = false;
+              setAuditStatus(`Audit hoàn tất. ${done} page.`);
+            }
+          } catch (err) {
+            setAuditStatus(String(err));
+            clearInterval(auditPollTimer);
+            auditPollTimer = null;
+            auditRunBtn.disabled = false;
+          }
+        }, 1000);
+      }
+
+      trackingTabBtn.addEventListener("click", () => activateView("tracking"));
+      auditTabBtn.addEventListener("click", () => activateView("audit"));
+
+      auditRunBtn.addEventListener("click", async () => {
+        const urls = parseAuditUrls(auditUrlsEl.value);
+        if (!urls.length) {
+          setAuditStatus("Vui lòng nhập ít nhất một landing page URL.");
+          return;
+        }
+        activateView("audit");
+        auditRunBtn.disabled = true;
+        setAuditStatus("Đang bắt đầu audit...");
+        auditProgressBar.style.width = "0%";
+        auditProgressText.textContent = `Đã xử lý 0/${urls.length}`;
+        auditStatTotal.textContent = String(urls.length);
+        auditStatIssues.textContent = "0";
+        renderAuditPendingState();
+        try {
+          const resp = await fetch(`${API_BASE}/audit/run`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ urls }),
+          });
+          if (!resp.ok) {
+            const message = await resp.text();
+            throw new Error(message || `Lỗi máy chủ ${resp.status}`);
+          }
+          const data = await resp.json();
+          startAuditPolling(data.job_id);
+        } catch (err) {
+          setAuditStatus(String(err));
+          auditRunBtn.disabled = false;
+        }
+      });
 
       wrappedPromptYes.addEventListener("click", async () => {
         await runWrappedRecheckForRows(pendingWrappedPromptRows);
