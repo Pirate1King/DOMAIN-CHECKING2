@@ -542,6 +542,10 @@
         gap: 16px;
         margin-top: 16px;
       }
+      .viewport-gallery.one-screen {
+        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+        gap: 10px;
+      }
       .viewport-card {
         border: 1px solid rgba(28, 86, 60, 0.72);
         border-radius: 14px;
@@ -553,12 +557,19 @@
         display: block;
         width: 100%;
         aspect-ratio: 10 / 16;
-        object-fit: cover;
+        object-fit: contain;
+        object-position: top center;
         background: #02110a;
         border-bottom: 1px solid rgba(28, 86, 60, 0.6);
       }
+      .viewport-gallery.one-screen .viewport-thumb {
+        aspect-ratio: 3 / 4;
+      }
       .viewport-meta {
         padding: 12px;
+      }
+      .viewport-gallery.one-screen .viewport-meta {
+        padding: 9px;
       }
       .viewport-title {
         display: flex;
@@ -579,11 +590,21 @@
         color: #d2ffe8;
         font: 11px "JetBrains Mono", "Consolas", monospace;
       }
+      .viewport-gallery.one-screen .viewport-stats,
+      .viewport-gallery.one-screen .viewport-dim {
+        font-size: 10px;
+      }
       .viewport-actions {
         display: flex;
         gap: 10px;
         align-items: center;
         flex-wrap: wrap;
+      }
+      .score-line {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin-top: 10px;
       }
       .progress-text,
       .summary-box,
@@ -1246,6 +1267,14 @@
               <option value="fold">Above the fold</option>
               <option value="full">Full page</option>
             </select>
+            <label class="toggle">
+              <input id="viewportReviewMode" type="checkbox">
+              <span class="toggle-box" aria-hidden="true"></span>
+              <span class="toggle-copy">
+                <span class="toggle-kicker">Mode</span>
+                <span class="toggle-label">one-screen review</span>
+              </span>
+            </label>
             <button id="viewportRunBtn">Run Viewport</button>
             <button id="viewportDownloadBtn" class="copy-btn" type="button" disabled>Download All</button>
             <div id="viewportStatus" class="hint"></div>
@@ -1340,6 +1369,7 @@
       const geoAuditObservedMeta = document.getElementById("geoAuditObservedMeta");
       const viewportRunBtn = document.getElementById("viewportRunBtn");
       const viewportModeEl = document.getElementById("viewportMode");
+      const viewportReviewModeEl = document.getElementById("viewportReviewMode");
       const viewportDownloadBtn = document.getElementById("viewportDownloadBtn");
       const viewportUrlEl = document.getElementById("viewportUrl");
       const viewportStatusEl = document.getElementById("viewportStatus");
@@ -2497,21 +2527,25 @@
           viewportResultsEl.innerHTML = "<div class='hint'>Chưa có ảnh viewport.</div>";
           return;
         }
-        viewportResultsEl.innerHTML = `<div class="viewport-gallery">${shots.map((shot) => `
+        const galleryClass = viewportReviewModeEl && viewportReviewModeEl.checked ? "viewport-gallery one-screen" : "viewport-gallery";
+        viewportResultsEl.innerHTML = `<div class="${galleryClass}">${shots.map((shot) => `
           <div class="viewport-card">
-            <img class="viewport-thumb" src="${escapeHtml(String(shot.image_url || ""))}" alt="${escapeHtml(String(shot.label || ""))}" loading="lazy">
+            <a href="${escapeHtml(String(shot.image_url || ""))}" target="_blank" rel="noopener noreferrer">
+              <img class="viewport-thumb" src="${escapeHtml(String(shot.image_url || ""))}" alt="${escapeHtml(String(shot.label || ""))}" loading="lazy">
+            </a>
             <div class="viewport-meta">
               <div class="viewport-title">
                 <span>${escapeHtml(String(shot.label || ""))}</span>
                 <span class="audit-badge ${String(shot.device_type || "").toLowerCase() === "desktop" ? "match" : String(shot.device_type || "").toLowerCase() === "tablet" ? "warn" : "mismatch"}">${escapeHtml(String(shot.device_type || ""))}</span>
               </div>
-              <div class="viewport-dim">${Number(shot.width || 0)} x ${Number(shot.height || 0)}</div>
+              <div class="viewport-dim">${Number(shot.width || 0)} x ${Number(shot.height || 0)} | text ${Number(shot.body_text_length || 0)}</div>
               <div class="viewport-stats">status ${Number(shot.status || 0) || "-"} | load ${Number(shot.load_ms || 0)} ms | ${escapeHtml(String(shot.capture_mode || "fold"))}</div>
               <div class="audit-badge-pack">
                 ${shot.layout_break_risk ? `<span class="audit-badge mismatch">layout risk</span>` : `<span class="audit-badge match">layout clean</span>`}
                 ${shot.horizontal_overflow ? `<span class="audit-badge mismatch">overflow</span>` : ""}
                 ${Number(shot.overflow_count || 0) > 0 ? `<span class="audit-badge warn">offscreen ${Number(shot.overflow_count || 0)}</span>` : ""}
                 ${Number(shot.tiny_text_count || 0) > 5 ? `<span class="audit-badge warn">tiny text ${Number(shot.tiny_text_count || 0)}</span>` : ""}
+                ${Number(shot.body_text_length || 0) < 120 ? `<span class="audit-badge mismatch">low content</span>` : ""}
               </div>
             </div>
           </div>
@@ -2526,7 +2560,32 @@
         const statusBad = shots.filter((shot) => Number(shot.status || 0) >= 400 || Number(shot.status || 0) === 0).length;
         const slow = shots.filter((shot) => Number(shot.load_ms || 0) >= 5000).length;
         const layoutRisk = shots.filter((shot) => Boolean(shot.layout_break_risk)).length;
-        return `<div>Total view: ${shots.length} | Bad status: ${statusBad} | Slow: ${slow} | Layout risk: ${layoutRisk}</div>`;
+        const mobileShots = shots.filter((shot) => String(shot.device_type || "").toLowerCase() === "mobile");
+        const desktopShots = shots.filter((shot) => String(shot.device_type || "").toLowerCase() === "desktop");
+        const mobileScore = computeViewportScore(mobileShots);
+        const desktopScore = computeViewportScore(desktopShots);
+        return `
+          <div>Total view: ${shots.length} | Bad status: ${statusBad} | Slow: ${slow} | Layout risk: ${layoutRisk}</div>
+          <div class="score-line">
+            <span class="audit-badge ${mobileScore >= 80 ? "match" : mobileScore >= 60 ? "warn" : "mismatch"}">mobile-first ${mobileScore}/100</span>
+            <span class="audit-badge ${desktopScore >= 80 ? "match" : desktopScore >= 60 ? "warn" : "mismatch"}">desktop ${desktopScore}/100</span>
+          </div>
+        `;
+      }
+
+      function computeViewportScore(shots) {
+        if (!shots || !shots.length) return 0;
+        let totalScore = 0;
+        shots.forEach((shot) => {
+          let score = 100;
+          if (Number(shot.status || 0) >= 400 || Number(shot.status || 0) === 0) score -= 35;
+          if (Boolean(shot.layout_break_risk)) score -= 20;
+          if (Number(shot.load_ms || 0) >= 5000) score -= 10;
+          if (Number(shot.body_text_length || 0) < 120) score -= 15;
+          if (Number(shot.tiny_text_count || 0) > 5) score -= 10;
+          totalScore += Math.max(0, score);
+        });
+        return Math.max(0, Math.min(100, Math.round(totalScore / shots.length)));
       }
 
       async function loadGeoProfiles() {
@@ -2820,6 +2879,12 @@
           return;
         }
         window.open(`${API_BASE}/viewport/download?job=${encodeURIComponent(lastViewportJobId)}`, "_blank", "noopener");
+      });
+
+      viewportReviewModeEl.addEventListener("change", () => {
+        if (lastViewportData && (lastViewportData.shots || []).length) {
+          renderViewportGallery(lastViewportData.shots);
+        }
       });
 
       loadGeoProfiles();

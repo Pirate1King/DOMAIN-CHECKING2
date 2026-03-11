@@ -1250,9 +1250,10 @@ def capture_viewport_shot(browser, url, job_id, idx, preset, artifact_dir, captu
     response = page.goto(url, wait_until="load", timeout=30000)
     load_ms = int((time.perf_counter() - started_at) * 1000)
     try:
-        page.wait_for_load_state("networkidle", timeout=3000)
+        page.wait_for_load_state("networkidle", timeout=5000)
     except Exception:
         pass
+    wait_for_visual_settle(page, capture_mode=capture_mode)
     layout_metrics = page.evaluate(
         """() => {
           const body = document.body;
@@ -1277,6 +1278,7 @@ def capture_viewport_shot(browser, url, job_id, idx, preset, artifact_dir, captu
             overflowCount: overflowing.length,
             tinyTextCount: tinyText,
             horizontalOverflow: docWidth > vw + 24,
+            bodyTextLength: document.body && document.body.innerText ? document.body.innerText.trim().length : 0,
           };
         }"""
     )
@@ -1307,6 +1309,7 @@ def capture_viewport_shot(browser, url, job_id, idx, preset, artifact_dir, captu
         "overflow_count": overflow_count,
         "tiny_text_count": tiny_text_count,
         "layout_flags": layout_flags,
+        "body_text_length": int(layout_metrics.get("bodyTextLength") or 0),
     }
     context.close()
     return shot
@@ -1317,6 +1320,42 @@ def build_viewport_zip(job_id, artifact_dir):
     with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
         for file_path in sorted(artifact_dir.glob("*.png")):
             zf.write(file_path, arcname=file_path.name)
+
+
+def wait_for_visual_settle(page, capture_mode="fold"):
+    try:
+        page.wait_for_function(
+            """() => {
+              const ready = document.readyState === 'complete';
+              const bodyText = document.body && document.body.innerText ? document.body.innerText.trim().length : 0;
+              const visibleMedia = Array.from(document.images).filter((img) => {
+                const rect = img.getBoundingClientRect();
+                return rect.width > 40 && rect.height > 40 && rect.top < window.innerHeight * 1.5;
+              });
+              const pendingImages = visibleMedia.filter((img) => !img.complete || img.naturalWidth === 0).length;
+              return ready && bodyText > 120 && pendingImages === 0;
+            }""",
+            timeout=7000,
+        )
+    except Exception:
+        pass
+    try:
+        page.evaluate(
+            """(captureMode) => {
+              window.scrollTo(0, 0);
+              if (captureMode === 'full') {
+                window.scrollTo(0, Math.min(window.innerHeight * 0.75, document.body.scrollHeight));
+                window.scrollTo(0, 0);
+              }
+            }""",
+            capture_mode,
+        )
+    except Exception:
+        pass
+    try:
+        page.wait_for_timeout(1200)
+    except Exception:
+        pass
 
 
 if __name__ == "__main__":
