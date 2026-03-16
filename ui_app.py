@@ -1,3 +1,4 @@
+import base64
 import json
 import mimetypes
 import os
@@ -13,7 +14,7 @@ from urllib.parse import unquote, urlparse
 from urllib.error import URLError
 from urllib.request import ProxyHandler, Request, build_opener, install_opener, urlopen
 
-from check_domains import build_output_header, process_domain
+from check_domains import build_output_header, fetch_url, process_domain
 
 
 HTML_PATH = Path(__file__).with_name("ui.html")
@@ -89,6 +90,9 @@ class Handler(BaseHTTPRequestHandler):
         self._send(200, html, "text/html; charset=utf-8")
 
     def do_POST(self):
+        if self.path == "/backup-fetch":
+            self._handle_backup_fetch()
+            return
         if self.path == "/notify":
             self._handle_notify()
             return
@@ -131,13 +135,60 @@ class Handler(BaseHTTPRequestHandler):
         body = json.dumps({"job_id": job_id})
         self._send(200, body, "application/json; charset=utf-8")
 
-    def _handle_audit_run(self):
+    def _read_json_body(self):
         length = int(self.headers.get("Content-Length", "0"))
         raw = self.rfile.read(length).decode("utf-8", errors="ignore")
         try:
-            payload = json.loads(raw)
+            return json.loads(raw), None
         except json.JSONDecodeError:
-            self._send(400, "Invalid JSON", "text/plain; charset=utf-8")
+            return None, "Invalid JSON"
+
+    def _backup_secret_valid(self):
+        expected = os.environ.get("BACKUP_FETCHER_SECRET", "").strip()
+        if not expected:
+            return False
+        provided = self.headers.get("X-Backup-Secret", "").strip()
+        return provided == expected
+
+    def _handle_backup_fetch(self):
+        if not self._backup_secret_valid():
+            self._send(403, "Forbidden", "text/plain; charset=utf-8")
+            return
+        payload, error = self._read_json_body()
+        if error:
+            self._send(400, error, "text/plain; charset=utf-8")
+            return
+
+        url = str((payload or {}).get("url", "")).strip()
+        if not url:
+            self._send(400, "Missing url", "text/plain; charset=utf-8")
+            return
+
+        allow_redirects = bool((payload or {}).get("allow_redirects", True))
+        try:
+            timeout_secs = int((payload or {}).get("timeout_secs", 15))
+        except (TypeError, ValueError):
+            timeout_secs = 15
+        timeout_secs = max(3, min(timeout_secs, 60))
+
+        started = time.time()
+        result = fetch_url(url, allow_redirects=allow_redirects, timeout_secs=timeout_secs)
+        body = result.get("body") or b""
+        response = {
+            "status": int(result.get("status") or 0),
+            "final_url": result.get("final_url") or url,
+            "location": result.get("location") or "",
+            "error": result.get("error") or "",
+            "body_base64": base64.b64encode(body).decode("ascii"),
+            "body_length": len(body),
+            "elapsed_ms": int((time.time() - started) * 1000),
+        }
+        self._send(200, json.dumps(response), "application/json; charset=utf-8")
+
+    def _handle_audit_run(self):
+        payload, error = self._read_json_body()
+        if error:
+            self._send(400, error, "text/plain; charset=utf-8")
             return
         urls = payload.get("urls", [])
         if not isinstance(urls, list):
@@ -156,12 +207,9 @@ class Handler(BaseHTTPRequestHandler):
         self._send(200, body, "application/json; charset=utf-8")
 
     def _handle_geo_run(self):
-        length = int(self.headers.get("Content-Length", "0"))
-        raw = self.rfile.read(length).decode("utf-8", errors="ignore")
-        try:
-            payload = json.loads(raw)
-        except json.JSONDecodeError:
-            self._send(400, "Invalid JSON", "text/plain; charset=utf-8")
+        payload, error = self._read_json_body()
+        if error:
+            self._send(400, error, "text/plain; charset=utf-8")
             return
         urls = payload.get("urls", [])
         profile_name = str(payload.get("profile", "")).strip()
